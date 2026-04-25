@@ -54,9 +54,14 @@ export default function LandingPage() {
           ]}
         />
         <ActionCard 
-          icon={ShieldCheck} title="Coordinator Access" 
-          description="Manage emergency reports and deploy local resources effectively."
-          buttons={[{ text: "Admin Login", variant: "secondary", onClick: () => navigate("/admin/login") }]}
+        icon={ShieldCheck} 
+        title="Coordinator Access" 
+        description="Manage emergency reports and deploy resources."
+        buttons={[{ 
+            text: "Admin Dashboard", 
+            variant: "secondary", 
+            onClick: () => navigate("/admin") // Changed from /admin/login to /admin
+        }]}
         />
       </div>
     </div>

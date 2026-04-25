@@ -6,14 +6,17 @@ import { Server } from 'socket.io';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import connectDB from './config/db.js';
 import Report from './models/Report.js';
+import User from './models/User.js'; // Import the new User model
 
 dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// 1. Cloudinary & Gemini Configuration
+// --- CONFIGURATION ---
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_API_KEY,
@@ -21,7 +24,6 @@ cloudinary.config({
 });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 2. Socket.io Setup
 const io = new Server(server, {
   cors: { origin: "http://localhost:5173", methods: ["GET", "POST"] }
 });
@@ -32,59 +34,121 @@ const upload = multer({ dest: 'uploads/' });
 
 connectDB();
 
-// --- AI SEVERITY ANALYSIS LOGIC ---
+// --- AI ANALYSIS LOGIC ---
 async function analyzeSeverity(description) {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Act as an emergency dispatcher. Analyze this report: "${description}". 
-    Rate severity 1-10. Return ONLY JSON: {"score": number, "reason": "short explanation"}`;
+    const prompt = `Analyze this emergency report: "${description}". 
+    Rate severity from 1 to 10. Provide ONLY a JSON response: {"score": 8, "reason": "Short explanation"}`;
     
     const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    // Clean JSON formatting if AI adds markdown
-    const cleanJson = responseText.replace(/```json|```/g, "");
-    return JSON.parse(cleanJson);
+    const responseText = result.response.text().replace(/```json|```/g, "").trim();
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("AI Error:", error);
-    return { score: 5, reason: "Manual analysis needed" };
+    console.error("AI Analysis Error:", error);
+    return { score: 5, reason: "Manual review required due to analysis error" };
   }
 }
 
-// --- API ROUTES ---
+// --- AUTHENTICATION ROUTES ---
+
+// 1. Register New User
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { fullName, email, password } = req.body;
+
+    const userExists = await User.findOne({ email });
+    if (userExists) return res.status(400).json({ message: "User already exists" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({ fullName, email, password: hashedPassword });
+    
+    await newUser.save();
+    res.status(201).json({ success: true, message: "User registered successfully!" });
+  } catch (error) {
+    res.status(500).json({ message: "Registration failed", error: error.message });
+  }
+});
+
+// 2. Login User
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+    res.json({ token, user: { fullName: user.fullName, email: user.email } });
+  } catch (error) {
+    res.status(500).json({ message: "Login failed" });
+  }
+});
+
+// --- REPORT ROUTES ---
+
 app.post('/api/reports', upload.single('image'), async (req, res) => {
   try {
     const { name, phone, description, location, category } = req.body;
     let imageUrl = "";
 
-    // A. Upload Image to Cloudinary if provided
     if (req.file) {
       const result = await cloudinary.uploader.upload(req.file.path);
       imageUrl = result.secure_url;
     }
 
-    // B. Get AI Analysis
     const analysis = await analyzeSeverity(description);
 
-    // C. Save to Database
     const newReport = new Report({
       name, phone, description, location, category, 
-      imageUrl, severityScore: analysis.score, aiReason: analysis.reason
+      imageUrl, severityScore: analysis.score, aiReason: analysis.reason,
+      status: 'Pending'
     });
+    
     await newReport.save();
-
-    // D. Notify Admin via Socket.io
-    io.emit('new-report', newReport);
+    io.emit('new-report', newReport); // Real-time update for dashboard
 
     res.status(201).json({ success: true, report: newReport });
   } catch (error) {
-    console.error("Submission Error:", error);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
+app.get('/api/reports', async (req, res) => {
+  try {
+    const reports = await Report.find().sort({ createdAt: -1 });
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching reports" });
+  }
+});
+
+// --- UPDATE REPORT STATUS (Approve/Reject) ---
+app.patch('/api/reports/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const updatedReport = await Report.findByIdAndUpdate(
+      req.params.id, 
+      { status }, 
+      { new: true }
+    );
+    
+    // Notify all clients that a report status has changed
+    io.emit('report-updated', updatedReport);
+    
+    res.json({ success: true, report: updatedReport });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update report" });
+  }
+});
+
+// --- SERVER START ---
 io.on('connection', (socket) => {
-  console.log('Admin Connected:', socket.id);
+  console.log('Admin connected:', socket.id);
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
