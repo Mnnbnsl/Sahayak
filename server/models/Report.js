@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const reportSchema = new mongoose.Schema({
+const ReportSchema = new mongoose.Schema({
   name: { type: String, required: true },
   phone: { type: String, required: true },
   description: { type: String, required: true },
@@ -8,9 +8,9 @@ const reportSchema = new mongoose.Schema({
   category: String,
   imageUrl: String,
   severityScore: Number,
-  aiReason: String,
+  aiReasoning: String,
   status: { type: String, default: 'Pending' },
   createdAt: { type: Date, default: Date.now }
 });
 
-export default mongoose.model('Report', reportSchema);
+export default mongoose.model('Report', ReportSchema);

@@ -7,7 +7,8 @@ import {
   Plus, X, UserPlus, LogOut, MapPin, Clock, Edit3, XCircle
 } from "lucide-react";
 
-const socket = io("http://localhost:5000");
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const socket = io(API_URL);
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -16,6 +17,8 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("dashboard"); 
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null); // Added for Review Queue logic
+  const [verifications, setVerifications] = useState([]);
+  const [selectedVerification, setSelectedVerification] = useState(null);
   const [stats, setStats] = useState({ total: 0, pending: 0, volunteers: 89, resolved: 0 });
   const [showAuth, setShowAuth] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
@@ -28,7 +31,9 @@ export default function AdminDashboard() {
 
     const fetchStats = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/reports");
+        const res = await fetch(`${API_URL}/api/reports`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+        });
         const data = await res.json();
         setReports(data);
         if (data.length > 0) setSelectedReport(data[0]); // Default selection
@@ -38,6 +43,13 @@ export default function AdminDashboard() {
           pending: data.filter(r => r.status === 'Pending').length,
           resolved: data.filter(r => r.status === 'Approved').length
         }));
+
+        const resStats = await fetch(`${API_URL}/api/verifications`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+        });
+        const verifData = await resStats.json();
+        setVerifications(verifData);
+        if (verifData.length > 0) setSelectedVerification(verifData[0]);
       } catch (err) { console.error(err); }
     };
     fetchStats();
@@ -61,7 +73,7 @@ export default function AdminDashboard() {
     e.preventDefault();
     const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
     try {
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -89,11 +101,39 @@ export default function AdminDashboard() {
 
   const handleStatusUpdate = async (id, status) => {
     try {
-      await fetch(`http://localhost:5000/api/reports/${id}`, {
+      const response = await fetch(`${API_URL}/api/reports/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify({ status })
       });
+      if (!response.ok) {
+        const errData = await response.json();
+        alert(errData.message || "Failed to update status");
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleVerificationUpdate = async (id, status) => {
+    try {
+      const response = await fetch(`${API_URL}/api/verifications/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        },
+        body: JSON.stringify({ status })
+      });
+      if (response.ok) {
+        setVerifications(prev => prev.filter(v => v._id !== id));
+        setSelectedVerification(null);
+        alert(`Verification ${status}`);
+      } else {
+        const errData = await response.json();
+        alert(errData.message || "Failed to update status");
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -141,7 +181,7 @@ export default function AdminDashboard() {
         <nav className="space-y-1">
           <NavItem icon={<LayoutDashboard size={20}/>} label="Dashboard" active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
           <NavItem icon={<ClipboardList size={20}/>} label="Review Queue" active={activeTab === "review"} onClick={() => setActiveTab("review")} />
-          <NavItem icon={<ShieldCheck size={20}/>} label="Verification" onClick={() => alert("Coming soon")} />
+          <NavItem icon={<ShieldCheck size={20}/>} label="Verification" active={activeTab === "verification"} onClick={() => setActiveTab("verification")} />
           <NavItem icon={<Settings size={20}/>} label="Settings" onClick={() => alert("Coming soon")} />
         </nav>
       </aside>
@@ -200,7 +240,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
-          ) : (
+          ) : activeTab === "review" ? (
             /* --- REVIEW QUEUE VIEW - FIXED SPLIT UI --- */
             <div className="flex flex-col h-full animate-in slide-in-from-right-4 duration-500">
               <div className="mb-6">
@@ -217,7 +257,14 @@ export default function AdminDashboard() {
                       <div key={r._id} onClick={() => setSelectedReport(r)} 
                         className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedReport?._id === r._id ? 'bg-[#11162B] border-l-4 border-orange-500' : ''}`}>
                         <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] font-black text-orange-500 uppercase px-2 py-0.5 bg-orange-500/10 rounded">{r.status}</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded
+                          ${r.status === "Pending" ? "bg-yellow-500/10 text-yellow-500" :
+                          r.status === "Approved" ? "bg-green-500/10 text-green-500" :
+                          r.status === "Assigned" ? "bg-blue-500/10 text-blue-500" :
+                          "bg-red-500/10 text-red-500"
+}`}>
+                          {r.status}
+                          </span>
                           <span className="text-[10px] text-gray-500 italic">Recent</span>
                         </div>
                         <h4 className="font-bold text-sm truncate">{r.category || "General"}</h4>
@@ -234,7 +281,10 @@ export default function AdminDashboard() {
                       <div className="flex justify-between items-center">
                         <h3 className="text-xl font-bold italic tracking-tighter">AI VERIFICATION PANEL</h3>
                         <div className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-4 py-1 rounded-full text-[10px] font-black">
-                          CONFIDENCE: {selectedReport.severityScore || 7}/10
+                          CONFIDENCE: {(selectedReport.confidence * 100).toFixed(0)}%
+                        </div>
+                        <div className="bg-red-500/10 text-red-500 border border-red-500/20 px-4 py-1 rounded-full text-[10px] font-black">
+                          SEVERITY: {selectedReport.severityScore}/10
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -256,7 +306,67 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
-          )}
+          ) : activeTab === "verification" ? (
+            /* --- VERIFICATION VIEW --- */
+            <div className="flex flex-col h-full animate-in slide-in-from-right-4 duration-500">
+              <div className="mb-6">
+                <h2 className="text-3xl font-bold">Verification Queue</h2>
+                <p className="text-gray-500 text-sm italic">Review proof of completed missions</p>
+              </div>
+
+              <div className="flex flex-1 gap-6 min-h-0 overflow-hidden">
+                <div className="w-1/3 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] flex flex-col overflow-hidden">
+                  <div className="p-4 border-b border-[#1C223C] bg-[#0D122B] text-[10px] font-black text-gray-500 uppercase tracking-widest">Pending Verifications</div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {verifications.length > 0 ? verifications.map(v => (
+                      <div key={v._id} onClick={() => setSelectedVerification(v)} 
+                        className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedVerification?._id === v._id ? 'bg-[#11162B] border-l-4 border-orange-500' : ''}`}>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-500 mb-2 inline-block">
+                          {v.status}
+                        </span>
+                        <h4 className="font-bold text-sm truncate">Mission Verification</h4>
+                        <p className="text-xs text-gray-400 mt-1">Volunteer: {v.volunteerName}</p>
+                      </div>
+                    )) : <p className="p-10 text-center text-gray-600">No verifications pending.</p>}
+                  </div>
+                </div>
+
+                <div className="flex-1 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] p-8 overflow-y-auto custom-scrollbar">
+                  {selectedVerification ? (
+                    <div className="space-y-6">
+                      <h3 className="text-xl font-bold italic tracking-tighter uppercase">Proof Analysis</h3>
+                      <div className="bg-[#11162B] border border-[#1C223C] rounded-3xl p-6 flex justify-between items-center">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">AI Confidence</p>
+                          <p className="font-black text-xl text-orange-500">{(selectedVerification.aiConfidence * 100).toFixed(0)}%</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500 mb-1">Volunteer</p>
+                          <p className="font-bold text-white">{selectedVerification.volunteerName}</p>
+                        </div>
+                      </div>
+
+                      {selectedVerification.proofImageUrl && (
+                        <div className="border border-[#1C223C] rounded-3xl overflow-hidden bg-[#11162B]">
+                          <div className="p-3 border-b border-[#1C223C] text-xs font-bold text-gray-500 uppercase">Uploaded Proof</div>
+                          <img src={`${API_URL}/${selectedVerification.proofImageUrl.replace(/\\/g, "/")}`} alt="Proof" className="w-full h-auto max-h-96 object-contain" />
+                        </div>
+                      )}
+
+                      <div className="flex gap-4">
+                        <button onClick={() => handleVerificationUpdate(selectedVerification._id, "Approved")} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all">
+                          Verify & Close Mission
+                        </button>
+                        <button onClick={() => handleVerificationUpdate(selectedVerification._id, "Rejected")} className="flex-1 border-2 border-red-900/50 hover:border-red-500 text-red-500 font-bold py-3 rounded-xl transition-all">
+                          Reject Proof
+                        </button>
+                      </div>
+                    </div>
+                  ) : <div className="h-full flex items-center justify-center text-gray-600 italic">Select a verification request</div>}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </main>
     </div>

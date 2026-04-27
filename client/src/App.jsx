@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import ReportPage from "./pages/ReportPage";
 import AdminDashboard from "./pages/AdminDashboard";
+import VolunteerDashboard from "./pages/VolunteerDashboard";
 
 // Optional: Global Components (like a Navbar if you have one)
 // import Navbar from "./components/Navbar";
@@ -24,6 +25,9 @@ function App() {
 
           {/* Admin / Coordinator Dashboard */}
           <Route path="/admin" element={<AdminDashboard />} />
+
+          {/* Volunteer Dashboard */}
+          <Route path="/volunteer" element={<VolunteerDashboard />} />
 
           {/* Fallback for 404 - Optional */}
           <Route 
