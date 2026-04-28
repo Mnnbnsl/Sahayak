@@ -7,7 +7,7 @@ import {
   Plus, X, UserPlus, LogOut, MapPin, Clock, Edit3, XCircle
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "https://sahayak-dh3b.onrender.com";
 const socket = io(API_URL);
 
 export default function AdminDashboard() {

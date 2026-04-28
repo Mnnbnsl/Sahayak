@@ -16,7 +16,7 @@ export default function VolunteerDashboard() {
   const [user, setUser] = useState(null);
   const [formData, setFormData] = useState({ fullName: "", email: "", password: "", skills: "Medical", location: "City Center" });
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = import.meta.env.VITE_API_URL || "https://sahayak-dh3b.onrender.com";
 
   useEffect(() => {
     const savedUser = localStorage.getItem("vol_user");
