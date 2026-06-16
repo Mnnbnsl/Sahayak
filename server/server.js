@@ -4,7 +4,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import multer from 'multer';
-import path from 'path';
+import cloudinary from 'cloudinary';
 import connectDB from './config/db.js';
 import Report from './models/Report.js';
 import Verification from './models/Verification.js';
@@ -16,40 +16,56 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const app = express();
-connectDB(); // Connect to MongoDB
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static('uploads')); // Serve uploaded files
+connectDB(); // Connect to MongoDB Atlas cluster
 
+// Cloudinary Engine SDK Initialization
+cloudinary.v2.config({
+    cloud_name: process.env.CLOUD_NAME,
+    api_key: process.env.CLOUD_API_KEY,
+    api_secret: process.env.CLOUD_API_SECRET
+});
+
+// Sync server cross-origin configurations directly with frontend port mapping targets
+app.use(cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+}));
+app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "http://localhost:5173" } // Your Vite frontend URL
+    cors: { origin: "http://localhost:5173", methods: ["GET", "POST", "PATCH"] }
 });
+
+// Share socket instance across express routing parameters safely
+app.set('socketio', io);
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// File Upload
-
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  }
-});
-
+// Memory RAM storage buffer management for seamless multi-platform image streaming
+const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// AI Analysis Function
+// Helper logic: Async image stream parsing straight to Cloudinary media buckets
+const uploadToCloudinary = (fileBuffer, folderName) => {
+    return new Promise((resolve, reject) => {
+        if (!fileBuffer) return resolve(null);
+        cloudinary.v2.uploader.upload_stream({ folder: folderName }, (error, result) => {
+            if (error) reject(error);
+            else resolve(result.secure_url);
+        }).end(fileBuffer);
+    });
+};
 
+// AI Analysis Function
 async function analyzeWithLLM(data) {
     if (!process.env.GEMINI_API_KEY) {
         console.warn("No GEMINI_API_KEY provided. Using fallback logic.");
         return {
             is_incident: true,
             severity_score: 5,
-            confidence: 0.95, // high confidence to test auto dispatch
+            confidence: 0.95,
             reasoning: "Fallback due to missing API key"
         };
     }
@@ -68,13 +84,13 @@ You are an expert Emergency Response Dispatcher and Incident Analyst. Your goal 
 ### EVALUATION CRITERIA
 1. **is_incident**: Set to true ONLY if the description involves an active threat to life, property, public safety, or the environment. False for general inquiries, non-emergencies, or completed historical events.
 2. **severity_score (1-10)**:
-   - **1-3 (Low)**: Minor property damage, non-life-threatening issues (e.g., minor water leak, parking violation).
-   - **4-6 (Medium)**: Significant damage or risk of injury (e.g., localized fire, minor car accident with no trapped passengers).
-   - **7-10 (High/Critical)**: Immediate life threat, mass casualties, or widespread disaster (e.g., structural collapse, active shooter, cardiac arrest).
+   - 1-3 (Low): Minor property damage, non-life-threatening issues.
+   - 4-6 (Medium): Significant damage or risk of injury.
+   - 7-10 (High/Critical): Immediate life threat, mass casualties, or widespread disaster.
 3. **confidence**: A decimal between 0 and 1 representing how certain you are based on the clarity of the description.
 
 ### CONSTRAINTS FOLLOW THEM STRICTLY
-- Return **STRICT JSON ONLY**.
+- Return STRICT JSON ONLY.
 - Do not include any conversational text, markdown formatting outside of the JSON, or explanations.
 - The "reasoning" field must cite specific cues from the description.
 - Dont return null values or undefined for any of the fields.
@@ -109,8 +125,8 @@ You are an expert Emergency Response Dispatcher and Incident Analyst. Your goal 
         return {
             is_incident: true,
             severity_score: 8,
-            confidence: 0.95, // High confidence to trigger auto-dispatch for testing
-            reasoning: "Fallback triggered due to API key error (e.g. leaked key)"
+            confidence: 0.95,
+            reasoning: "Fallback triggered due to API transaction failure"
         };
     }
 }
@@ -133,17 +149,9 @@ async function suggestVolunteer(report) {
 
     for (let v of volunteers) {
         let score = 0;
-
-        // ⭐ skill match (already filtered but boost)
-        score += 5;
-
-        // ⭐ experience
+        score += 5; // Skill match base weight
         score += v.tasksCompleted * 0.2;
-
-        // ⭐ rating
         score += v.rating * 2;
-
-        // ⭐ location match
         if (v.location === report.location) score += 3;
 
         if (score > bestScore) {
@@ -151,13 +159,11 @@ async function suggestVolunteer(report) {
             bestScore = score;
         }
     }
-
     return best;
 }
 
 async function assignTask(report) {
     const volunteer = await suggestVolunteer(report);
-
     if (!volunteer) throw new Error("No volunteers available");
 
     const task = await Task.create({
@@ -165,19 +171,16 @@ async function assignTask(report) {
         volunteerId: volunteer._id
     });
 
-    // mark volunteer busy
     volunteer.availability = false;
     await volunteer.save();
 
-    // update report
     report.status = "Assigned";
     await report.save();
 
     return task;
 }
 
-// --- API ROUTES ---
-
+// --- MIDDLEWARE ---
 const verifyToken = (req, res, next) => {
     const token = req.header('Authorization')?.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'Access Denied' });
@@ -190,7 +193,7 @@ const verifyToken = (req, res, next) => {
     }
 };
 
-// Auth Routes
+// --- AUTH API ROUTES ---
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { fullName, email, password } = req.body;
@@ -200,7 +203,7 @@ app.post('/api/auth/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const newUser = await User.create({ fullName, email, password: hashedPassword });
+        await User.create({ fullName, email, password: hashedPassword });
         res.status(201).json({ message: "User created successfully" });
     } catch (err) {
         res.status(500).json({ message: "Server error" });
@@ -223,7 +226,6 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Volunteer Auth Routes
 app.post('/api/auth/volunteer/register', async (req, res) => {
     try {
         const { fullName, email, password, skills, location } = req.body;
@@ -256,34 +258,52 @@ app.post('/api/auth/volunteer/login', async (req, res) => {
     }
 });
 
-// 1. Fetch all reports for the Review Queue
+// --- OPERATIONAL LOGIC APP ROUTES ---
+
+// 1. Fetch all reports for Admin Review Queue Panel
 app.get('/api/reports', verifyToken, async (req, res) => {
-    const reports = await Report.find().sort({ timestamp: -1 });
-    res.json(reports);
+    try {
+        const reports = await Report.find().sort({ createdAt: -1 });
+        res.json(reports);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// 2. Submit a new request (Triggers live update)
+// 2. Form submission channel parsing data directly to Cloudinary + Gemini
 app.post('/api/reports', upload.single("image"), async (req, res) => {
     try {
         const data = req.body;
 
+        // Stream binary file chunk straight up to Cloudinary
+        let secureAssetUrl = null;
+        if (req.file) {
+            secureAssetUrl = await uploadToCloudinary(req.file.buffer, 'sahayak_reports');
+        }
+
         const ai = await analyzeWithLLM(data);
         const status = decideStatus(ai);
 
+        const latitude = parseFloat(data.latitude);
+        const longitude = parseFloat(data.longitude);
+
         const newReport = await Report.create({
-            name: data.name,
+            name: data.name || "Anonymous User",
             phone: data.phone,
             description: data.description,
             location: data.location,
+
+            latitude: isNaN(latitude) ? 31.6340 : latitude,
+            longitude: isNaN(longitude) ? 74.8723 : longitude,
+
             category: data.category,
-            imageUrl: req.file ? req.file.path : null,
-
+            imageUrl: secureAssetUrl,
             severityScore: ai.severity_score,
-            aiReason: ai.reasoning,
+            aiReasoning: ai.reasoning,
             confidence: ai.confidence,
-
             status
         });
+
         if (status === "Approved") {
             try {
                 await assignTask(newReport);
@@ -294,48 +314,65 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
         }
 
         io.emit('new-report', newReport);
-
         res.status(201).json(newReport);
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Server error" });
+        console.error("Ingestion failed:", err);
+        res.status(500).json({ error: "Emergency compilation failed" });
     }
 });
 
-// 3. Update report status (Approve/Reject logic)
+// 3. Update report status manual administrative fallback overrides
 app.patch('/api/reports/:id', verifyToken, async (req, res) => {
-    const { status } = req.body;
+    try {
+        const { status, forceApproval } = req.body;
+        const report = await Report.findById(req.params.id);
+        if (!report) return res.status(404).json({ message: "Report instance not found" });
 
-    const report = await Report.findById(req.params.id);
-
-    if (status === "Approved") {
-        try {
-            await assignTask(report);
-        } catch (err) {
-            return res.status(404).json({ message: "No volunteers available" });
+        if (status === "Approved") {
+            try {
+                // Try standard assignment
+                await assignTask(report);
+            } catch (err) {
+                // IF VOLUNTEERS OFFLINE BUT ADMIN FORCED IT via Dashboard: Override and drop on map!
+                if (forceApproval) {
+                    report.status = "Approved";
+                    await report.save();
+                    
+                    io.emit("report-updated", report);
+                    return res.json(report);
+                }
+                
+                // Otherwise block it with the standard exception
+                return res.status(400).json({ message: "No compatible volunteers available online right now" });
+            }
+        } else {
+            report.status = status;
+            await report.save();
         }
-    } else {
-        report.status = status;
-        await report.save();
+
+        io.emit("report-updated", report);
+        res.json(report);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-
-    io.emit("report-updated", report);
-
-    res.json(report);
 });
 
 // 4. Fetch Verification Queue
 app.get('/api/verifications', verifyToken, async (req, res) => {
-    const list = await Verification.find({ status: 'Pending' });
-    res.json(list);
+    try {
+        const list = await Verification.find({ status: 'Pending' });
+        res.json(list);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.patch('/api/verifications/:id', verifyToken, async (req, res) => {
     try {
         const { status } = req.body; 
         const verification = await Verification.findById(req.params.id);
-        if (!verification) return res.status(404).json({ message: "Verification not found" });
+        if (!verification) return res.status(404).json({ message: "Verification entry missing" });
 
         verification.status = status;
         await verification.save();
@@ -347,7 +384,6 @@ app.patch('/api/verifications/:id', verifyToken, async (req, res) => {
                 task.status = "VERIFIED";
                 task.verified = true;
                 
-                // Update the report to Resolved
                 const report = await Report.findById(task.reportId);
                 if (report) {
                     report.status = "Resolved";
@@ -355,14 +391,12 @@ app.patch('/api/verifications/:id', verifyToken, async (req, res) => {
                     io.emit("report-updated", report);
                 }
 
-                // Make volunteer available again
                 const volunteer = await Volunteer.findById(task.volunteerId);
                 if (volunteer) {
                     volunteer.availability = true;
                     volunteer.tasksCompleted += 1;
                     await volunteer.save();
                 }
-
             } else {
                 task.status = "ASSIGNED"; 
                 task.proofImage = null;
@@ -372,11 +406,11 @@ app.patch('/api/verifications/:id', verifyToken, async (req, res) => {
 
         res.json(verification);
     } catch (err) {
-        res.status(500).json({ error: "Server error" });
+        res.status(500).json({ error: "Server verification processing error" });
     }
 });
 
-// 5. Fetch tasks for logged-in volunteer
+// 5. Fetch tasks assigned to the authenticated active volunteer
 app.get('/api/tasks/me', verifyToken, async (req, res) => {
     try {
         const tasks = await Task.find({ volunteerId: req.user.id })
@@ -384,50 +418,54 @@ app.get('/api/tasks/me', verifyToken, async (req, res) => {
             .sort({ _id: -1 });
         res.json(tasks);
     } catch (err) {
-        res.status(500).json({ error: "Server error" });
+        res.status(500).json({ error: "Server task processing failed" });
     }
 });
 
 app.post("/api/tasks/:id/complete", upload.single("proofImage"), async (req, res) => {
-    const proofImage = req.file ? req.file.path : null;
+    try {
+        let cloudProofUrl = null;
+        if (req.file) {
+            cloudProofUrl = await uploadToCloudinary(req.file.buffer, 'sahayak_proofs');
+        }
 
-    const task = await Task.findById(req.params.id);
+        const task = await Task.findById(req.params.id);
+        if (!task) return res.status(404).json({ message: "Task reference missing" });
 
-    task.status = "COMPLETED";
-    task.proofImage = proofImage;
+        task.status = "COMPLETED";
+        task.proofImage = cloudProofUrl;
+        await task.save();
 
-    await task.save();
+        const report = await Report.findById(task.reportId);
+        const volunteer = await Volunteer.findById(task.volunteerId);
 
-    const report = await Report.findById(task.reportId);
-    const volunteer = await Volunteer.findById(task.volunteerId);
+        await Verification.create({
+            reportId: task.reportId,
+            volunteerName: volunteer.name,
+            volunteerId: volunteer._id,
+            proofImageUrl: cloudProofUrl,
+            aiConfidence: report.confidence || 1.0,
+            status: "Pending"
+        });
 
-    await Verification.create({
-        reportId: task.reportId,
-        volunteerName: volunteer.name,
-        volunteerId: volunteer._id,
-        proofImageUrl: proofImage,
-        aiConfidence: report.confidence,
-        status: "Pending"
-    });
-
-    res.json(task);
+        res.json(task);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post("/api/tasks/:id/verify", async (req, res) => {
     const task = await Task.findById(req.params.id);
-
     task.status = "VERIFIED";
     task.verified = true;
-
     await task.save();
-
     res.json(task);
 });
 
-// --- SOCKET LOGIC ---
+// --- REALTIME WEB_SOCKET COMMUNICATIONS LAYER ---
 io.on('connection', (socket) => {
-    console.log('Admin connected:', socket.id);
-    socket.on('disconnect', () => console.log('Admin disconnected'));
+    console.log(`Sahayak Command Center socket connection opened: ${socket.id}`);
+    socket.on('disconnect', () => console.log('Socket link dropped safely'));
 });
 
-server.listen(5000, () => console.log("Server running on port 5000"));
+server.listen(5000, () => console.log("Sahayak Processing Engine cleanly deployed on port 5000"));
