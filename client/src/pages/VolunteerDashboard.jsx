@@ -1,288 +1,1108 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { 
-  ClipboardList, CheckCircle, MapPin, Search, Bell, Upload, Loader2, ArrowLeft, X, UserPlus, LogOut
+import {
+  LayoutDashboard,
+  ClipboardList,
+  Settings,
+  Bell,
+  LogOut,
+  MapPin,
+  AlertTriangle,
+  Phone,
+  Upload,
+  CheckCircle,
+  Menu,
+  X,
+  User,
+  Clock,
+  CheckSquare,
+  Eye,
+  ToggleLeft,
+  ToggleRight,
+  Navigation
 } from "lucide-react";
 
 export default function VolunteerDashboard() {
-  const navigate = useNavigate();
+  // Navigation & UI States
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, tasks, notifications, settings
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+
+  // Data States
   const [tasks, setTasks] = useState([]);
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [stats, setStats] = useState({ assigned: 0, completed: 0, verified: 0 });
+  const [selectedImages, setSelectedImages] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selectedTask, setSelectedTask] = useState(null); // For deep mission details view
 
-  const [showAuth, setShowAuth] = useState(false);
-  const [isLogin, setIsLogin] = useState(true);
-  const [user, setUser] = useState(null);
-  const [formData, setFormData] = useState({ fullName: "", email: "", password: "", skills: "Medical", location: "City Center" });
+  // Profile & Settings States
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [profile, setProfile] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    skills: "",
+    tasksCompleted: 0,
+    rating: 5
+  });
 
-  const API_URL = import.meta.env.VITE_API_URL || "https://sahayak-dh3b.onrender.com";
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const volunteerId = localStorage.getItem("volunteerId");
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("vol_user");
-    if (savedUser) setUser(JSON.parse(savedUser));
-
-    const fetchTasks = async () => {
-      const token = localStorage.getItem("vol_token");
-      if (!token) return;
+    fetchTasks();
+    fetchNotifications();
+    const fetchProfile = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/tasks/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        setTasks(data);
-        if (data.length > 0) setSelectedTask(data[0]);
+
+        const response = await fetch(
+          `${API_URL}/api/volunteers/profile/${volunteerId}`
+        );
+
+        const data = await response.json();
+
+        if (response.ok) {
+
+          setProfile({
+            name: data.name || "",
+            email: data.email || "",
+            phone: data.phone || "",
+            skills: data.skills?.join(", ") || "",
+            tasksCompleted: data.tasksCompleted || 0,
+            rating: data.rating || 5
+          });
+
+          setIsAvailable(
+            data.availability
+          );
+        }
+
       } catch (err) {
-        console.error(err);
+        console.log(err);
       }
     };
-    fetchTasks();
-  }, [API_URL, user]);
+    fetchProfile();
+  }, []);
 
-  const handleAuth = async (e) => {
-    e.preventDefault();
-    const endpoint = isLogin ? "/api/auth/volunteer/login" : "/api/auth/volunteer/register";
+  useEffect(() => {
+    const assigned =
+      tasks.filter(
+        t => t.status === "Assigned"
+      ).length;
+
+    const completed =
+      tasks.filter(
+        t => t.status === "Completed"
+      ).length;
+
+    const verified =
+      tasks.filter(
+        t => t.status === "Verified"
+      ).length;
+
+    setStats({
+      assigned,
+      completed,
+      verified
+    });
+
+  }, [tasks]);
+
+  const fetchTasks = async () => {
+    if (!volunteerId) {
+      console.log("Volunteer not logged in");
+      return;
+    }
+    setLoading(true);
     try {
-      const response = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      const response = await fetch(`${API_URL}/api/tasks/volunteer/${volunteerId}`);
+      
+      if (!response.ok) {
+        console.warn("Volunteer specific route failed, falling back to general tasks filter");
+        const fallbackRes = await fetch(`${API_URL}/api/tasks`);
+        const allTasks = await fallbackRes.json();
+        if (fallbackRes.ok) {
+          const filtered = allTasks.filter(t => t.volunteerId?._id === volunteerId );
+          setTasks(filtered);
+          return;
+        }
+      }
+
       const data = await response.json();
       if (response.ok) {
-        if (isLogin) {
-          localStorage.setItem("vol_token", data.token);
-          localStorage.setItem("vol_user", JSON.stringify(data.user)); 
-          setUser(data.user);
-          setShowAuth(false);
-        } else {
-          alert("Account created! Please login.");
-          setIsLogin(true);
-        }
-      } else { alert(data.message); }
-    } catch (err) { alert("Server error."); }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("vol_token");
-    localStorage.removeItem("vol_user");
-    setUser(null);
-    setTasks([]);
-    setSelectedTask(null);
-  };
-
-  const handleImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedImage(e.target.files[0]);
+        setTasks(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch tasks:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCompleteTask = async () => {
-    if (!selectedImage) return alert("Please upload a proof image to complete the task.");
-    setIsSubmitting(true);
-
-    const formData = new FormData();
-    formData.append("proofImage", selectedImage);
-
+  const fetchNotifications = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/tasks/${selectedTask._id}/complete`, {
+
+      if (!volunteerId) return;
+
+      const response = await fetch(
+        `${API_URL}/api/notifications/${volunteerId}`
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+
+        setNotifications(data);
+
+        setUnreadNotificationsCount(
+          data.filter(
+            (n) => !n.read
+          ).length
+        );
+      }
+
+    } catch (err) {
+      console.error(
+        "Failed to fetch notifications:",
+        err
+      );
+    }
+  };
+
+  const handleImageSelect = (taskId, file) => {
+    setSelectedImages((prev) => ({
+      ...prev,
+      [taskId]: file
+    }));
+  };
+
+  const completeTask = async (taskId) => {
+    try {
+      const formData = new FormData();
+      if (selectedImages[taskId]) {
+        formData.append("proofImage", selectedImages[taskId]);
+      } else {
+        alert("Please select a valid image file as proof before submission.");
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/complete`, {
         method: "POST",
-        body: formData,
+        body: formData
       });
 
       if (response.ok) {
-        alert("Task marked as completed! Awaiting admin verification.");
-        setTasks(prev => prev.map(t => t._id === selectedTask._id ? { ...t, status: "COMPLETED" } : t));
-        setSelectedTask(prev => ({ ...prev, status: "COMPLETED" }));
-        setSelectedImage(null);
+        alert("Mission proof uploaded successfully! Awaiting Admin verification.");
+        setSelectedImages(prev => {
+          const updated = { ...prev };
+          delete updated[taskId];
+          return updated;
+        });
+        if (selectedTask?._id === taskId) {
+          setSelectedTask(prev => ({ ...prev, status: "Completed" }));
+        }
+        fetchTasks();
+        fetchNotifications();
       } else {
-        alert("Failed to complete task.");
+        alert("Failed to complete task. Please try again.");
       }
     } catch (err) {
       console.error(err);
-      alert("Server error.");
-    } finally {
-      setIsSubmitting(false);
+      alert("Error uploading proof image.");
     }
   };
 
-  return (
-    <div className="flex h-screen bg-[#050816] text-white font-sans overflow-hidden relative">
+  const handleToggleAvailability = async () => {
+    try {
 
-      {/* AUTH MODAL */}
-      {showAuth && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0A0F24] border border-[#1C223C] w-full max-w-md rounded-[32px] p-8 relative">
-            <button onClick={() => setShowAuth(false)} className="absolute top-6 right-6 text-gray-500"><X /></button>
-            <h2 className="text-3xl font-bold mb-6">{isLogin ? "Volunteer Login" : "Join as Volunteer"}</h2>
-            <form onSubmit={handleAuth} className="space-y-4">
-              {!isLogin && (
-                <div className="animate-in slide-in-from-top-2 duration-300 space-y-4">
-                  <input type="text" placeholder="Full Name" required className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl py-3 px-4 outline-none focus:border-blue-500"
-                    onChange={(e) => setFormData({...formData, fullName: e.target.value})} />
-                  <input type="text" placeholder="Location" required className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl py-3 px-4 outline-none focus:border-blue-500"
-                    onChange={(e) => setFormData({...formData, location: e.target.value})} />
-                  <select required className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl py-3 px-4 outline-none focus:border-blue-500"
-                    onChange={(e) => setFormData({...formData, skills: e.target.value})}>
-                    <option value="Medical">Medical</option>
-                    <option value="Fire">Fire</option>
-                    <option value="Accident">Accident</option>
-                    <option value="General">General/Other</option>
-                  </select>
-                </div>
-              )}
-              <input type="email" placeholder="Email" required className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl py-3 px-4 outline-none focus:border-blue-500"
-                onChange={(e) => setFormData({...formData, email: e.target.value})} />
-              <input type="password" placeholder="Password" required className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl py-3 px-4 outline-none focus:border-blue-500"
-                onChange={(e) => setFormData({...formData, password: e.target.value})} />
-              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-blue-500 transition-all active:scale-95">
-                {isLogin ? "Sign In" : "Register"}
-              </button>
-            </form>
-            <p className="mt-6 text-center text-sm text-gray-500">
-              {isLogin ? "Don't have an account?" : "Already a volunteer?"}
-              <span onClick={() => setIsLogin(!isLogin)} className="text-blue-500 cursor-pointer ml-2 font-bold hover:underline">
-                {isLogin ? "Join Now" : "Login"}
-              </span>
-            </p>
-          </div>
-        </div>
-      )}
+      const response = await fetch(
+        `${API_URL}/api/volunteers/availability/${volunteerId}`,
+        {
+          method: "PATCH"
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setIsAvailable(data.availability);
+      }
+
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const handleProfileSave = async (e) => {
+    e.preventDefault();
+
+    try {
+
+      const response = await fetch(
+        `${API_URL}/api/volunteers/profile/${volunteerId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (response.ok) {
+        alert(
+          "Profile updated successfully"
+        );
+      }
+
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+
+      await Promise.all(
+        notifications.map((notif) =>
+          fetch(
+            `${API_URL}/api/notifications/read/${notif._id}`,
+            {
+              method: "PATCH"
+            }
+          )
+        )
+      );
+
+      fetchNotifications();
+
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+    const markNotificationRead = async (id) => {
+    try {
+
+      await fetch(
+        `${API_URL}/api/notifications/read/${id}`,
+        {
+          method: "PATCH"
+        }
+      );
+
+      fetchNotifications();
+
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const handleLogout = () => {
+    if (confirm("Are you sure you want to securely log out?")) {
+      localStorage.removeItem("volunteerId");
+      localStorage.removeItem("volunteerToken");
+      localStorage.removeItem("volunteerName");
+      localStorage.removeItem("volunteerEmail");
+
+      window.location.href = "/volunteer/login";
+    }
+  };
+
+  const openGoogleMaps = (locationString) => {
+    if (!locationString) return;
+    const encodedLocation = encodeURIComponent(locationString);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encodedLocation}`, "_blank");
+  };
+
+  const initiateCall = (phoneNum) => {
+    if (!phoneNum) {
+      alert("No victim contact number provided for this incident.");
+      return;
+    }
+    window.open(`tel:${phoneNum}`, "_self");
+  };
+
+  return (
+    <div className="min-h-screen bg-[#050816] text-white flex font-sans">
       
-      {/* SIDEBAR */}
-      <aside className="w-64 border-r border-[#1C223C] bg-[#0A0F24] p-6 hidden lg:flex flex-col gap-8 z-20">
-        <div className="flex items-center gap-3 px-2 cursor-pointer" onClick={() => navigate("/")}>
-          <div className="w-8 h-8 bg-[#3B82F6] rounded-lg flex items-center justify-center">
-             <ArrowLeft className="text-white w-4 h-4" />
+      {/* SIDEBAR NAVIGATION */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#050816] border-r border-[#232B4C] transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} transition-transform duration-300 md:relative md:translate-x-0 flex flex-col justify-between`}>
+        <div>
+          {/* Sidebar Brand Header */}
+          <div className="p-6 border-b border-[#232B4C] flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img src="/sahayak-logo.png" className="h-10" alt="Sahayak Logo" />
+              <h1 className="font-bold text-sm tracking-wider text-white">
+                SAHAYAK VOLUNTEER OPS
+              </h1>
+            </div>
+            <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+              <X size={20} />
+            </button>
           </div>
-          <span className="text-xl font-bold italic">Volunteer</span>
+
+          {/* Navigation Links */}
+          <nav className="p-4 space-y-2">
+            <button
+              onClick={() => { setActiveTab("dashboard"); setSelectedTask(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === "dashboard" ? "bg-[#F97316] text-white shadow-lg shadow-orange-500/20" : "text-gray-400 hover:bg-[#11162B] hover:text-white"}`}
+            >
+              <LayoutDashboard size={20} />
+              Dashboard Overview
+            </button>
+            <button
+              onClick={() => { setActiveTab("tasks"); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium relative ${activeTab === "tasks" ? "bg-[#F97316] text-white shadow-lg shadow-orange-500/20" : "text-gray-400 hover:bg-[#11162B] hover:text-white"}`}
+            >
+              <ClipboardList size={20} />
+              My Active Tasks
+              {stats.assigned > 0 && (
+                <span className="absolute right-3 bg-orange-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {stats.assigned}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setActiveTab("notifications"); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium relative ${activeTab === "notifications" ? "bg-[#F97316] text-white shadow-lg shadow-orange-500/20" : "text-gray-400 hover:bg-[#11162B] hover:text-white"}`}
+            >
+              <Bell size={20} />
+              Alert Notifications
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute right-3 bg-white text-[#F97316] text-xs font-bold px-2 py-0.5 rounded-full">
+                  {unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setActiveTab("settings"); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === "settings" ? "bg-[#F97316] text-white shadow-lg shadow-orange-500/20" : "text-gray-400 hover:bg-[#11162B] hover:text-white"}`}
+            >
+              <Settings size={20} />
+              Settings & Profile
+            </button>
+          </nav>
         </div>
-        <nav className="space-y-1">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20">
-            <ClipboardList size={20}/> <span className="font-bold text-sm tracking-tight">My Tasks</span>
+
+        {/* Sidebar Footer User Info */}
+        <div className="p-4 border-t border-[#232B4C] bg-[#11162B]">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#F97316] to-[#EA580C] flex items-center justify-center text-white font-bold">
+              {profile.name.charAt(0 || "U").toUpperCase()}
+            </div>
+            <div className="truncate flex-1">
+              <h4 className="text-sm font-semibold truncate">{profile.name}</h4>
+              <p className="text-xs text-green-400 flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${isAvailable ? "bg-green-500 animate-pulse" : "bg-gray-500"}`}></span>
+                {isAvailable ? "Active Duty" : "Offline"}
+              </p>
+            </div>
           </div>
-        </nav>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-900/50 rounded-xl text-sm font-medium transition-all"
+          >
+            <LogOut size={16} />
+            Secure Log Out
+          </button>
+        </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-20 flex justify-between items-center px-8 border-b border-[#1C223C]">
-          <h1 className="text-xl font-bold tracking-tight text-gray-300">Active Missions</h1>
+      {/* MAIN VIEW CONTENT CONTAINER */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        
+        {/* TOP MOBILE BAR / ACTION STRIP */}
+        <header className="bg-[#050816] border-b border-[#232B4C] h-16 px-6 flex items-center justify-between md:justify-end gap-4">
+          <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setIsSidebarOpen(true)}>
+            <Menu size={24} />
+          </button>
+          
           <div className="flex items-center gap-4">
-            {!user ? (
-              <button onClick={() => { setShowAuth(true); setIsLogin(true); }} className="text-sm font-bold text-gray-400 hover:text-white transition-colors">Login / Sign Up</button>
-            ) : (
-              <div className="flex items-center gap-3 bg-[#11162B] px-3 py-1.5 rounded-full border border-[#1C223C]">
-                <span className="text-xs font-bold text-gray-300 hidden md:block">{user.fullName}</span>
-                <button onClick={handleLogout} className="text-gray-500 hover:text-red-500 transition-colors"><LogOut size={16} /></button>
-              </div>
-            )}
-            <div className="flex items-center gap-4 border-l border-[#1C223C] pl-6">
-              <div className="relative p-2 bg-[#11162B] rounded-full border border-[#1C223C] cursor-pointer hover:bg-[#1C223C]">
-                <Bell size={18}/><span className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full border-2 border-[#11162B]"></span>
-              </div>
-              <div onClick={() => !user && setShowAuth(true)} className={`w-10 h-10 flex items-center justify-center rounded-full border-2 border-[#1C223C] cursor-pointer ${user ? 'bg-gradient-to-tr from-blue-600 to-cyan-500' : 'bg-[#11162B]'}`}>
-                <span className="text-sm font-black text-white">{user ? user.fullName.charAt(0).toUpperCase() : <UserPlus size={18} className="text-gray-500"/>}</span>
-              </div>
+            {/* Direct Quick Availability Toggle */}
+            <button 
+              onClick={handleToggleAvailability}
+              className="flex items-center gap-2 bg-[#11162B] border border-[#232B4C] px-3 py-1.5 rounded-xl text-sm"
+            >
+              <span className="text-xs text-gray-400 hidden sm:inline">Status:</span>
+              {isAvailable ? (
+                <span className="text-green-400 font-semibold flex items-center gap-1">
+                  Available <ToggleRight size={18} className="text-green-400" />
+                </span>
+              ) : (
+                <span className="text-gray-400 font-semibold flex items-center gap-1">
+                  Unavailable <ToggleLeft size={18} className="text-gray-500" />
+                </span>
+              )}
+            </button>
+
+            {/* Quick Profile Pill */}
+            <div className="flex items-center gap-2 bg-[#11162B] border border-[#232B4C] px-3 py-1.5 rounded-xl text-sm">
+              <User size={16} className="text-[#F97316]" />
+              <span className="font-medium max-w-[120px] truncate hidden sm:inline">{profile.name}</span>
             </div>
           </div>
         </header>
 
-        <div className="flex-1 p-8 overflow-y-auto">
-          <div className="flex flex-col h-full animate-in fade-in duration-500">
-            <div className="mb-6">
-              <h2 className="text-3xl font-bold">Task Queue</h2>
-              <p className="text-gray-500 text-sm italic">Respond to emergencies assigned to you</p>
-            </div>
+        {/* CONTAINER CONTENT ROUTING PANEL */}
+        <main className="p-6 md:p-8 flex-1 max-w-7xl w-full mx-auto">
+          
+          {/* TAB 1: DASHBOARD OVERVIEW */}
+          {activeTab === "dashboard" && !selectedTask && (
+            <div>
+              <div className="mb-8">
+                <h1 className="text-3xl font-extrabold tracking-tight">Welcome, {profile.name.split(" ")[0] || "Volunteer"}</h1>
+                <p className="text-gray-400 mt-1">Here is your crisis intervention & deployment summary metrics.</p>
+              </div>
 
-            <div className="flex flex-1 gap-6 min-h-0 overflow-hidden">
-              {/* LIST COLUMN */}
-              <div className="w-1/3 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-[#1C223C] bg-[#0D122B] text-[10px] font-black text-gray-500 uppercase tracking-widest">Assigned Tasks</div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  {tasks.length > 0 ? tasks.map(t => (
-                    <div key={t._id} onClick={() => setSelectedTask(t)} 
-                      className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedTask?._id === t._id ? 'bg-[#11162B] border-l-4 border-blue-500' : ''}`}>
-                      <div className="flex justify-between items-start mb-2">
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${t.status === "COMPLETED" ? "bg-green-500/10 text-green-500" : "bg-blue-500/10 text-blue-500"}`}>
-                          {t.status}
-                        </span>
-                      </div>
-                      <h4 className="font-bold text-sm truncate">{t.reportId?.category || "Emergency Task"}</h4>
-                      <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
-                        <MapPin className="w-3 h-3 text-gray-500" /> {t.reportId?.location || "Unknown"}
-                      </div>
-                    </div>
-                  )) : <p className="p-10 text-center text-gray-600">No tasks assigned yet.</p>}
+              {/* ANALYTICS METRIC CARDS */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+                <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6 shadow-xl relative overflow-hidden group">
+                  <div className="absolute right-4 top-4 text-[#F97316]/10">
+                    <Clock size={48} />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Assigned Missions</p>
+                  <p className="text-4xl font-black text-[#F97316] mt-2">{stats.assigned}</p>
+                </div>
+
+                <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6 shadow-xl relative overflow-hidden group">
+                  <div className="absolute right-4 top-4 text-blue-500/10">
+                    <CheckSquare size={48} />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Pending Review</p>
+                  <p className="text-4xl font-black text-blue-400 mt-2">{stats.completed}</p>
+                </div>
+
+                <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6 shadow-xl relative overflow-hidden group">
+                  <div className="absolute right-4 top-4 text-green-500/10">
+                    <CheckCircle size={48} />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Resolved Cases</p>
+                  <p className="text-4xl font-black text-green-400 mt-2">{stats.verified}</p>
                 </div>
               </div>
 
-              {/* DETAILS COLUMN */}
-              <div className="flex-1 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] p-8 overflow-y-auto custom-scrollbar">
-                {selectedTask ? (
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-xl font-bold italic tracking-tighter">MISSION DETAILS</h3>
-                      {selectedTask.status === "COMPLETED" && (
-                        <div className="bg-green-500/10 text-green-500 border border-green-500/20 px-4 py-1 rounded-full text-[10px] font-black flex items-center gap-1">
-                          <CheckCircle size={12} /> COMPLETED
+              {/* ACTION CALLOUT / BANNER */}
+              <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Need emergency dispatch instructions?</h3>
+                  <p className="text-sm text-gray-300 mt-0.5">Toggle your active duty availability status so telemetry and assignments route correctly.</p>
+                </div>
+                <button 
+                  onClick={() => setActiveTab("tasks")} 
+                  className="bg-[#F97316] hover:bg-[#EA580C] text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all"
+                >
+                  View Active Task Sheet
+                </button>
+              </div>
+
+              {/* RECENT CURRENT TASK SNIPPET */}
+              <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <ClipboardList className="text-[#F97316]" size={22} /> Critical Assignments
+                </h2>
+                {loading ? (
+                  <div className="text-center py-8 text-gray-400">Syncing telemetry data...</div>
+                ) : tasks.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">No active operational tasks designated to your account.</div>
+                ) : (
+                  <div className="divide-y divide-[#232B4C]">
+                    {tasks.slice(0, 3).map((task) => (
+                      <div key={task._id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-md text-white">{task.reportId?.category || "General Assistance"}</h4>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold border ${
+                              task.status === "Verified" ? "bg-green-950 text-green-400 border-green-800" :
+                              task.status === "Completed" ? "bg-blue-950 text-blue-400 border-blue-800" : "bg-orange-950 text-[#F97316] border-orange-800"
+                            }`}>{task.status}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                            <MapPin size={12} className="text-[#F97316]" /> {task.reportId?.location || "Unknown Location"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
+                          className="bg-[#050816] hover:bg-[#11162B] text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 border border-[#232B4C] transition-colors"
+                        >
+                          <Eye size={14} /> Mission Control
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: DETAILED TASKS MANAGEMENT & MISSION CONTROL */}
+          {activeTab === "tasks" && (
+            <div>
+              {selectedTask ? (
+                <div>
+                  <button 
+                    onClick={() => setSelectedTask(null)}
+                    className="mb-6 bg-[#11162B] border border-[#232B4C] hover:bg-[#050816] text-gray-300 text-sm px-4 py-2 rounded-xl font-medium transition-all"
+                  >
+                    ← Back to Task Dashboard Sheet
+                  </button>
+
+                  <div className="bg-[#11162B] border border-[#232B4C] rounded-3xl p-6 md:p-8 shadow-2xl">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#232b4c] pb-6 mb-6">
+                      <div>
+                        <span className="text-xs uppercase tracking-widest text-[#F97316] font-bold">Active Operational Incident Details</span>
+                        <h1 className="text-2xl md:text-3xl font-black mt-1 text-white">{selectedTask.reportId?.category || "Crisis Rescue Operation"}</h1>
+                      </div>
+                      <span className={`px-4 py-2 rounded-xl text-sm font-bold border ${
+                        selectedTask.status === "Verified" ? "bg-green-950 text-green-400 border-green-800" :
+                        selectedTask.status === "Completed" ? "bg-blue-950 text-blue-400 border-blue-800" : "bg-orange-950 text-[#F97316] border-orange-800"
+                      }`}>
+                        Status: {selectedTask.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                      <div className="space-y-4">
+                        <div className="bg-[#050816] p-4 rounded-xl border border-[#232B4C]">
+                          <label className="text-xs text-gray-400 font-semibold block uppercase mb-1">Geographical Parameters</label>
+                          <p className="text-white font-medium flex items-center gap-2">
+                            <MapPin size={16} className="text-[#F97316]" />
+                            {selectedTask.reportId?.location || "No address parameters provided."}
+                          </p>
+                        </div>
+
+                        <div className="bg-[#050816] p-4 rounded-xl border border-[#232B4C]">
+                          <label className="text-xs text-gray-400 font-semibold block uppercase mb-1">Incident Critical Severity</label>
+                          <p className="text-white font-medium flex items-center gap-2">
+                            <AlertTriangle size={16} className="text-amber-500" />
+                            Severity Rating: <span className="font-bold text-amber-400">{selectedTask.reportId?.severityScore || "N/A"}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#050816] p-4 rounded-xl border border-[#232B4C]">
+                        <label className="text-xs text-gray-400 font-semibold block uppercase mb-1">Incident Description & Logs</label>
+                        <p className="text-gray-300 text-sm leading-relaxed">
+                          {selectedTask.reportId?.description || "No customized report parameters or descriptions appended."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-b border-[#232B4C] py-6 mb-8">
+                      <div>
+                        <button
+                          onClick={() => openGoogleMaps(selectedTask.reportId?.location)}
+                          className="w-full bg-[#F97316] hover:bg-[#EA580C] text-white font-bold px-6 py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"
+                        >
+                          <Navigation size={18} />
+                          Launch Google Maps Navigation
+                        </button>
+                      </div>
+
+                      <div>
+                        <button
+                          onClick={() => initiateCall(selectedTask.reportId?.phone)}
+                          className="w-full bg-[#050816] hover:bg-[#11162B] text-green-400 border border-[#232B4C] font-bold px-6 py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all"
+                        >
+                          <Phone size={18} />
+                          Call Victim Direct Line
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Operational Proof Submission File Area */}
+                    <div>
+                      <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                        <Upload size={18} className="text-[#F97316]" /> Operational Proof Submission File Area
+                      </h3>
+
+                      {selectedTask.status === "Assigned" && (
+                        <div className="bg-[#050816] border-2 border-dashed border-[#232B4C] rounded-2xl p-6 text-center">
+                          <input
+                            type="file"
+                            id={`file-upload-detailed`}
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleImageSelect(selectedTask._id, e.target.files[0])}
+                          />
+                          <label 
+                            htmlFor={`file-upload-detailed`}
+                            className="cursor-pointer inline-flex flex-col items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                          >
+                            <div className="p-3 bg-[#11162B] rounded-full border border-[#232B4C] mb-1">
+                              <Upload size={24} className="text-[#F97316]" />
+                            </div>
+                            <span className="font-semibold text-sm">
+                              {selectedImages[selectedTask._id] ? `Selected: ${selectedImages[selectedTask._id].name}` : "Click to select ground dispatch operational proof image"}
+                            </span>
+                          </label>
+
+                          {selectedImages[selectedTask._id] && (
+                            <div className="mt-6 pt-4 border-t border-[#232B4C]">
+                              <button
+                                onClick={() => completeTask(selectedTask._id)}
+                                className="w-full sm:w-auto bg-green-600 hover:bg-green-500 text-white font-bold px-8 py-3 rounded-xl inline-flex items-center justify-center gap-2 shadow-lg transition-all"
+                              >
+                                <CheckCircle size={20} />
+                                Upload Proof & Complete Mission
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {selectedTask.status === "Completed" && (
+                        <div className="bg-blue-950/40 border border-blue-900/60 text-blue-300 p-4 rounded-xl font-medium flex items-center gap-2">
+                          <Clock size={18} className="animate-pulse" />
+                          The operational proof telemetry has been posted to back-end datastores. Awaiting regional Administrator review verification.
+                        </div>
+                      )}
+
+                      {selectedTask.status === "Verified" && (
+                        <div className="bg-green-950/40 border border-green-900/60 text-green-300 p-4 rounded-xl font-bold flex items-center gap-2">
+                          <CheckCircle size={18} />
+                          This mission case assignment is completely audited, verified, and closed by operational managers. Thank you for your service.
                         </div>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <DetailField label="Location" value={selectedTask.reportId?.location} />
-                      <DetailField label="Category" value={selectedTask.reportId?.category} />
-                      <div className="col-span-2"><DetailField label="Description" value={selectedTask.reportId?.description} isLarge /></div>
-                      <DetailField label="Contact Info" value={selectedTask.reportId?.phone} />
+
+                  </div>
+                </div>
+              ) : (
+                /* INTERACTIVE LIST OF ALL ASSIGNED MISSIONS */
+                <div>
+                  <div className="mb-6">
+                    <h1 className="text-3xl font-extrabold tracking-tight">Assigned Task Logs</h1>
+                  </div>
+
+                  {loading ? (
+                    <div className="text-center py-20 text-gray-400">Syncing database operations configuration...</div>
+                  ) : tasks.length === 0 ? (
+                    <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-12 text-center text-gray-400">
+                      <ClipboardList size={48} className="mx-auto mb-4 opacity-20" />
+                      No assigned operational task objects mapped to this volunteer account.
+                    </div>
+                  ) : (
+                    <div className="grid gap-6">
+                      {tasks.map((task) => (
+                        <div key={task._id} className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6 shadow-xl hover:border-[#F97316] hover:shadow-[0_0_20px_rgba(249,115,22,0.2)] transition-all duration-200">
+                          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                              {task.reportId?.category || "Rescue Operation Mission"}
+                            </h2>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold border self-start sm:self-auto ${
+                              task.status === "Verified" ? "bg-green-950 text-green-400 border-green-800" :
+                              task.status === "Completed" ? "bg-blue-950 text-blue-400 border-blue-800" : "bg-orange-950 text-[#F97316] border-orange-800"
+                            }`}>
+                              {task.status}
+                            </span>
+                          </div>
+
+                          <div className="space-y-3 mb-6 text-sm text-gray-300">
+                            <div className="flex items-center gap-2">
+                              <MapPin size={16} className="text-[#F97316]" />
+                              <span>{task.reportId?.location}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle size={16} className="text-amber-500" />
+                              <span>Critical Level: {task.reportId?.severityScore || "0"}/10</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-[#232B4C]">
+                            <button
+                              onClick={() => setSelectedTask(task)}
+                              className="bg-[#050816] hover:bg-[#11162B] border border-[#232B4C] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                            >
+                              <Eye size={14} /> Full Mission Panel
+                            </button>
+
+                            {task.status === "Assigned" && (
+                              <div className="ml-auto flex items-center gap-2">
+                                <input
+                                  type="file"
+                                  id={`file-upload-${task._id}`}
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => handleImageSelect(task._id, e.target.files[0])}
+                                />
+                                <label 
+                                  htmlFor={`file-upload-${task._id}`}
+                                  className="cursor-pointer bg-[#050816] hover:bg-[#11162B] border border-[#232B4C] text-xs font-semibold px-4 py-2 rounded-xl"
+                                >
+                                  {selectedImages[task._id] ? selectedImages[task._id].name : "Select Proof File"}
+                                </label>
+                                {selectedImages[task._id] && (
+                                  <button
+                                    onClick={() => completeTask(task._id)}
+                                    className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-4 py-2 rounded-xl"
+                                  >
+                                    Submit
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: ALERT NOTIFICATIONS LIST VIEW */}
+          {activeTab === "notifications" && (
+            <div>
+              {/* Header */}
+              <div className="flex justify-between items-center mb-8">
+
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-extrabold tracking-tight">
+                    Alert Notifications
+                  </h1>
+
+                  <span className="bg-[#F97316] text-white px-3 py-1 rounded-full text-sm font-bold">
+                    {notifications.length}
+                  </span>
+                </div>
+
+                {unreadNotificationsCount > 0 && (
+                  <button
+                    onClick={markAllNotificationsRead}
+                    className="bg-[#F97316] hover:bg-orange-600 text-white px-5 py-2 rounded-xl font-semibold transition-all"
+                  >
+                    Mark All Read
+                  </button>
+                )}
+              </div>
+
+              {/* Empty State */}
+              {notifications.length === 0 ? (
+                <div className="bg-[#11162B] border border-[#232B4C] rounded-3xl p-20 text-center">
+
+                  <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-[#F97316]/10 flex items-center justify-center">
+                    <Bell size={40} className="text-[#F97316]" />
+                  </div>
+
+                  <h2 className="text-2xl font-bold text-white">
+                    No Notifications
+                  </h2>
+
+                  <p className="text-gray-400 mt-3">
+                    You're all caught up. New emergency alerts will appear here.
+                  </p>
+
+                </div>
+              ) : (
+
+                <div className="space-y-5">
+
+                  {notifications.map((notif) => (
+
+                    <div
+                      key={notif._id}
+                      className={`bg-[#11162B] rounded-3xl border p-6 transition-all duration-300 hover:scale-[1.01]
+                      ${
+                        !notif.read
+                          ? "border-[#F97316] shadow-[0_0_25px_rgba(249,115,22,0.18)]"
+                          : "border-[#232B4C]"
+                      }`}
+                    >
+
+                      <div className="flex justify-between items-start">
+
+                        {/* LEFT SIDE */}
+                        <div className="flex gap-4">
+
+                          <div
+                            className={`w-14 h-14 rounded-2xl flex items-center justify-center
+                            ${
+                              !notif.read
+                                ? "bg-[#F97316]/20"
+                                : "bg-[#050816]"
+                            }`}
+                          >
+                            <Bell
+                              size={24}
+                              className="text-[#F97316]"
+                            />
+                          </div>
+
+                          <div>
+
+                            <div className="flex items-center gap-3">
+
+                              <h3 className="text-lg font-bold text-white">
+                                {notif.title}
+                              </h3>
+
+                              {!notif.read && (
+                                <span className="bg-[#F97316] text-white text-xs px-3 py-1 rounded-full font-bold">
+                                  NEW
+                                </span>
+                              )}
+
+                            </div>
+
+                            <p className="text-gray-300 mt-2 leading-relaxed">
+                              {notif.message}
+                            </p>
+
+                            <p className="text-xs text-gray-500 mt-4">
+                              {new Date(
+                                notif.createdAt
+                              ).toLocaleString()}
+                            </p>
+
+                          </div>
+
+                        </div>
+
+                        {/* RIGHT SIDE */}
+                        {!notif.read && (
+                          <button
+                            onClick={() =>
+                              markNotificationRead(
+                                notif._id
+                              )
+                            }
+                            className="bg-[#F97316] hover:bg-orange-600 px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all"
+                          >
+                            Mark Read
+                          </button>
+                        )}
+
+                      </div>
+
                     </div>
 
-                    {selectedTask.status !== "COMPLETED" && (
-                      <div className="bg-[#11162B] border border-[#1C223C] p-6 rounded-2xl space-y-4">
-                        <h4 className="text-sm font-bold text-gray-300">Complete Task</h4>
-                        <p className="text-xs text-gray-500">Upload visual proof of the resolved situation to complete this mission.</p>
-                        
-                        <input type="file" id="proof-upload" className="hidden" accept="image/*" onChange={handleImageChange} />
-                        <label 
-                          htmlFor="proof-upload" 
-                          className="border-2 border-dashed border-[#2A3459] rounded-xl p-6 flex flex-col items-center justify-center gap-2 hover:bg-[#1C223C] cursor-pointer transition-all"
-                        >
-                          {selectedImage ? (
-                            <div className="text-center">
-                              <p className="text-blue-500 font-bold text-sm">{selectedImage.name}</p>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-gray-400">
-                              <Upload size={18} /> <span className="text-sm font-bold">Upload Proof Image</span>
-                            </div>
-                          )}
-                        </label>
+                  ))}
 
-                        <button 
-                          onClick={handleCompleteTask} 
-                          disabled={isSubmitting || !selectedImage}
-                          className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${isSubmitting || !selectedImage ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95'}`}
-                        >
-                          {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
-                          Submit for Verification
-                        </button>
-                      </div>
+                </div>
+
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: SETTINGS & RESPONDER PROFILE */}
+          {activeTab === "settings" && (
+          <div>
+            <div className="mb-6">
+              <h1 className="text-3xl font-extrabold tracking-tight">
+                Settings & Profile
+              </h1>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+              {/* LEFT COLUMN */}
+              <div className="space-y-6">
+
+                {/* Availability Card */}
+                <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6">
+                  <button
+                    onClick={handleToggleAvailability}
+                    className={`w-full py-4 rounded-xl font-bold border flex items-center justify-center gap-2 transition-all ${
+                      isAvailable
+                        ? "bg-green-950/60 hover:bg-green-900/60 text-green-400 border-green-800"
+                        : "bg-red-950/60 hover:bg-red-900/60 text-red-400 border-red-800"
+                    }`}
+                  >
+                    {isAvailable ? (
+                      <ToggleRight size={22} />
+                    ) : (
+                      <ToggleLeft size={22} />
                     )}
+
+                    {isAvailable
+                      ? "Status: Active Duty"
+                      : "Status: Offline"}
+                  </button>
+                </div>
+
+                {/* Statistics Card */}
+                <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6">
+                  <h3 className="text-xl font-bold mb-4">
+                    Volunteer Statistics
+                  </h3>
+
+                  <div className="space-y-4">
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">
+                        Tasks Completed
+                      </span>
+
+                      <span className="text-green-400 font-bold">
+                        {profile.tasksCompleted || 0}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">
+                        Rating
+                      </span>
+
+                      <span className="text-yellow-400 font-bold">
+                        ⭐ {profile.rating || 5}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">
+                        Availability
+                      </span>
+
+                      <span
+                        className={`font-bold ${
+                          isAvailable
+                            ? "text-green-400"
+                            : "text-red-400"
+                        }`}
+                      >
+                        {isAvailable
+                          ? "Available"
+                          : "Unavailable"}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">
+                        Email
+                      </span>
+
+                      <span className="text-blue-400 text-sm">
+                        {profile.email}
+                      </span>
+                    </div>
+
                   </div>
-                ) : <div className="h-full flex items-center justify-center text-gray-600 italic">Select a task to view details</div>}
+                </div>
+
               </div>
+
+              {/* PROFILE FORM */}
+              <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-6 md:col-span-2">
+                <h3 className="text-lg font-bold text-white mb-6">
+                  Responder Profile Configurations
+                </h3>
+
+                <form
+                  onSubmit={handleProfileSave}
+                  className="space-y-4"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                    {/* Name */}
+                    <div>
+                      <label className="block text-xs text-gray-400 font-semibold mb-1 uppercase">
+                        Full Name
+                      </label>
+
+                      <input
+                        type="text"
+                        value={profile.name}
+                        onChange={(e) =>
+                          setProfile({
+                            ...profile,
+                            name: e.target.value
+                          })
+                        }
+                        className="w-full bg-[#050816] border border-[#232B4C] rounded-xl px-4 py-3 text-white"
+                      />
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-xs text-gray-400 font-semibold mb-1 uppercase">
+                        Phone
+                      </label>
+
+                        <input
+                          type="text"
+                          value={profile.phone}
+                          onChange={(e) =>
+                            setProfile({
+                              ...profile,
+                              phone: e.target.value
+                            })
+                          }
+                          className="
+                            w-full
+                            bg-[#050816]
+                            border border-[#232B4C]
+                            rounded-xl
+                            px-4 py-3
+                            text-white
+                            focus:outline-none
+                            focus:ring-2
+                            focus:ring-[#F97316]
+                            focus:border-[#F97316]
+                          "
+                        />
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                      <label className="block text-xs text-gray-400 font-semibold mb-1 uppercase">
+                        Email
+                      </label>
+
+                      <input
+                        type="email"
+                        value={profile.email}
+                        onChange={(e) =>
+                          setProfile({
+                            ...profile,
+                            email: e.target.value
+                          })
+                        }
+                        className="w-full bg-[#050816] border border-[#232B4C] rounded-xl px-4 py-3 text-white"
+                      />
+                    </div>
+
+                    {/* Skills */}
+                    <div>
+                      <label className="block text-xs text-gray-400 font-semibold mb-1 uppercase">
+                        Skills
+                      </label>
+
+                      <input
+                        type="text"
+                        value={profile.skills}
+                        onChange={(e) =>
+                          setProfile({
+                            ...profile,
+                            skills: e.target.value
+                          })
+                        }
+                        placeholder="Medical, Fire, Rescue"
+                        className="w-full bg-[#050816] border border-[#232B4C] rounded-xl px-4 py-3 text-white"
+                      />
+                    </div>
+
+                  </div>
+
+                  <div className="pt-4">
+                    <button
+                      type="submit"
+                      className="bg-[#F97316] hover:bg-[#EA580C] text-white font-bold px-6 py-3 rounded-xl transition-all"
+                    >
+                      Save Configuration Changes
+                    </button>
+                  </div>
+                </form>
+              </div>
+
             </div>
           </div>
-        </div>
-      </main>
-    </div>
-  );
-}
+          )}
+        </main>
+      </div>
 
-function DetailField({ label, value, isLarge }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[9px] font-black text-gray-600 uppercase tracking-widest ml-1">{label}</p>
-      <div className={`w-full bg-[#11162B] border border-[#1C223C] rounded-2xl px-5 flex items-center ${isLarge ? 'py-4 min-h-[80px]' : 'h-14'} text-sm font-bold`}>{value || "N/A"}</div>
     </div>
   );
 }

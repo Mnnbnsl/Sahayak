@@ -1,5 +1,6 @@
 import express from "express";
 import Report from "../models/Report.js";
+import Task from "../models/Task.js";
 import Volunteer from "../models/Volunteer.js";
 
 const router = express.Router();
@@ -74,51 +75,80 @@ router.patch("/:id", async (req, res) => {
     const reportId = req.params.id;
 
     const report = await Report.findById(reportId);
+
     if (!report) {
-      return res.status(404).json({ message: "Incident record not found." });
+      return res.status(404).json({
+        message: "Incident record not found."
+      });
     }
 
-    // Process logic explicitly for manual dashboard approvals
     if (status === "Approved") {
-      // Look for active volunteers matching criteria in MongoDB
-      const activeVolunteers = await Volunteer.find({ isOnline: true });
 
-      // If no volunteers are online (the issue from image_73f5e6.png)
-      if (!activeVolunteers || activeVolunteers.length === 0) {
-        
-        // CHECK OVERRIDE FLAG: If dashboard passed forceApproval, bypass block!
+      const activeVolunteers = await Volunteer.find({
+        availability: true
+      });
+
+      if (!activeVolunteers.length) {
+
         if (forceApproval) {
+
           report.status = "Approved";
           await report.save();
 
-          // Push the real-time update socket handshake down to the frontend
           const io = req.app.get("socketio");
           if (io) io.emit("report-updated", report);
 
           return res.status(200).json({
-            message: "Report approved manually without an active volunteer assignment.",
+            message:
+              "Report approved manually without volunteer assignment.",
             report
           });
         }
 
-        // Default blocker response if no override flag is present
-        return res.status(400).json({ 
-          message: "No compatible volunteers available online right now" 
+        return res.status(400).json({
+          message: "No compatible volunteers available online right now"
         });
       }
+
+      const volunteer = activeVolunteers[0];
+
+      report.status = "Approved";
+      report.assignedVolunteer = volunteer._id;
+
+      await report.save();
+
+      await Task.create({
+        reportId: report._id,
+        volunteerId: volunteer._id,
+        status: "Assigned"
+      });
+      volunteer.availability = false;
+      await volunteer.save();
+      
+      console.log("TASK CREATED:", task);
+    }
+    else {
+      report.status = status || report.status;
+      await report.save();
     }
 
-    // Default state resolution for other transitions (e.g., 'Rejected')
-    report.status = status || report.status;
-    await report.save();
-
     const io = req.app.get("socketio");
-    if (io) io.emit("report-updated", report);
 
-    res.status(200).json({ message: "Report state updated successfully.", report });
+    if (io) {
+      io.emit("report-updated", report);
+    }
+
+    res.status(200).json({
+      message: "Report state updated successfully.",
+      report
+    });
+
   } catch (error) {
-    console.error("Error updating report state:", error);
-    res.status(500).json({ message: "Server database update transaction failed." });
+    console.error(error);
+
+    res.status(500).json({
+      message: "Server database update transaction failed."
+    });
   }
 });
 

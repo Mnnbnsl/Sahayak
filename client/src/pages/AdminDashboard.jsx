@@ -32,7 +32,7 @@ export default function AdminDashboard() {
   const [selectedReport, setSelectedReport] = useState(null); 
   const [verifications, setVerifications] = useState([]);
   const [selectedVerification, setSelectedVerification] = useState(null);
-  const [stats, setStats] = useState({ total: 0, pending: 0, volunteers: 89, resolved: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, volunteers: 0, resolved: 0 });
   const [showAuth, setShowAuth] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [user, setUser] = useState(null);

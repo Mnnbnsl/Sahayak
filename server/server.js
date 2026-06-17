@@ -14,6 +14,9 @@ import User from './models/User.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import taskRoutes from "./routes/tasks.js";
+import volunteerRoutes from "./routes/volunteers.js";
+import notificationRoutes from "./routes/notifications.js";
 
 const app = express();
 connectDB(); // Connect to MongoDB Atlas cluster
@@ -32,6 +35,9 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
 }));
 app.use(express.json());
+app.use("/api/tasks", taskRoutes);
+app.use("/api/volunteers", volunteerRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -136,50 +142,71 @@ function decideStatus(ai) {
     if (ai.confidence < 0.9) return "Pending";
     return "Approved";
 }
-
-// Volunteer matching
+// Volunteer Suggestion Logic
 async function suggestVolunteer(report) {
+
+    console.log("REPORT CATEGORY:", report.category);
+
+    const allVolunteers = await Volunteer.find({});
+    console.log("ALL VOLUNTEERS:", allVolunteers);
+
     const volunteers = await Volunteer.find({
         availability: true,
         skills: report.category
     });
+
+    console.log("MATCHING VOLUNTEERS:", volunteers);
 
     let best = null;
     let bestScore = -1;
 
     for (let v of volunteers) {
         let score = 0;
-        score += 5; // Skill match base weight
-        score += v.tasksCompleted * 0.2;
-        score += v.rating * 2;
-        if (v.location === report.location) score += 3;
+        score += 5;
+        score += (v.tasksCompleted || 0) * 0.2;
+        score += (v.rating || 0) * 2;
+
+        if (v.location === report.location)
+            score += 3;
 
         if (score > bestScore) {
             best = v;
             bestScore = score;
         }
     }
+
     return best;
 }
-
 async function assignTask(report) {
+    console.log("REPORT CATEGORY:", report.category);
+
     const volunteer = await suggestVolunteer(report);
+
+    console.log("MATCHED VOLUNTEER:", volunteer);
+
     if (!volunteer) throw new Error("No volunteers available");
 
     const task = await Task.create({
         reportId: report._id,
         volunteerId: volunteer._id
     });
+    await Notification.create({
+        volunteerId: volunteer._id,
 
+        title: "New Emergency Assigned",
+
+        message: `${report.category} emergency assigned at ${report.location}`,
+
+        type: "TASK"
+    });
     volunteer.availability = false;
     await volunteer.save();
 
-    report.status = "Assigned";
+    report.status = "Approved";
     await report.save();
 
     return task;
 }
-
 // --- MIDDLEWARE ---
 const verifyToken = (req, res, next) => {
     const token = req.header('Authorization')?.split(' ')[1];
@@ -261,7 +288,7 @@ app.post('/api/auth/volunteer/login', async (req, res) => {
 // --- OPERATIONAL LOGIC APP ROUTES ---
 
 // 1. Fetch all reports for Admin Review Queue Panel
-app.get('/api/reports', verifyToken, async (req, res) => {
+app.get('/api/reports', async (req, res) => {
     try {
         const reports = await Report.find().sort({ createdAt: -1 });
         res.json(reports);
@@ -282,7 +309,6 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
         }
 
         const ai = await analyzeWithLLM(data);
-        const status = decideStatus(ai);
 
         const latitude = parseFloat(data.latitude);
         const longitude = parseFloat(data.longitude);
@@ -301,17 +327,10 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
             severityScore: ai.severity_score,
             aiReasoning: ai.reasoning,
             confidence: ai.confidence,
-            status
+            status : "Pending"
         });
 
-        if (status === "Approved") {
-            try {
-                await assignTask(newReport);
-            } catch (err) {
-                newReport.status = "Pending";
-                await newReport.save();
-            }
-        }
+        
 
         io.emit('new-report', newReport);
         res.status(201).json(newReport);
@@ -323,7 +342,7 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
 });
 
 // 3. Update report status manual administrative fallback overrides
-app.patch('/api/reports/:id', verifyToken, async (req, res) => {
+app.patch('/api/reports/:id', async (req, res) => {
     try {
         const { status, forceApproval } = req.body;
         const report = await Report.findById(req.params.id);
@@ -359,7 +378,7 @@ app.patch('/api/reports/:id', verifyToken, async (req, res) => {
 });
 
 // 4. Fetch Verification Queue
-app.get('/api/verifications', verifyToken, async (req, res) => {
+app.get('/api/verifications', async (req, res) => {
     try {
         const list = await Verification.find({ status: 'Pending' });
         res.json(list);

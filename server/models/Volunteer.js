@@ -1,16 +1,49 @@
 import mongoose from "mongoose";
 
 const VolunteerSchema = new mongoose.Schema({
-    name: String,
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    skills: [String], // ["Medical", "Fire"]
-    location: String,
-    rating: { type: Number, default: 3 },
-    tasksCompleted: { type: Number, default: 0 },
-    availability: { type: Boolean, default: true }
+  name: {
+     type: String,
+    required: true
+    },
+
+  email: {
+    type: String,
+    unique: true,
+    required: true
+  },
+
+  password: {
+    type: String,
+    required: true
+  },
+
+  phone: {
+    type: String
+  },
+
+  skills: [String],
+
+  location: String,
+
+  availability: {
+    type: Boolean,
+    default: true
+  },
+
+  rating: {
+    type: Number,
+    default: 5
+  },
+
+  tasksCompleted: {
+    type: Number,
+    default: 0
+  },
+
+  profileImage: String
 });
 
-const Volunteer = mongoose.model("Volunteer", VolunteerSchema);
-
-export default Volunteer;
+export default mongoose.model(
+  "Volunteer",
+  VolunteerSchema
+);

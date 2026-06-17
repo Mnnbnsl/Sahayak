@@ -6,6 +6,8 @@ import LandingPage from "./pages/LandingPage";
 import ReportPage from "./pages/ReportPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import VolunteerDashboard from "./pages/VolunteerDashboard";
+import VolunteerRegister from "./pages/VolunteerRegister";
+import VolunteerLogin from "./pages/VolunteerLogin";
 
 // Optional: Global Components (like a Navbar if you have one)
 // import Navbar from "./components/Navbar";
@@ -28,7 +30,11 @@ function App() {
 
           {/* Volunteer Dashboard */}
           <Route path="/volunteer" element={<VolunteerDashboard />} />
-
+          {/* Volunteer Registration */}
+          <Route path="/volunteer/register" element={<VolunteerRegister />} />
+          {/* Volunteer Login */}
+          <Route path="/volunteer/login" element={<VolunteerLogin />} />
+          
           {/* Fallback for 404 - Optional */}
           <Route 
             path="*" 
