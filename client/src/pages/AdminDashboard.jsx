@@ -31,7 +31,8 @@ export default function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null); 
   const [verifications, setVerifications] = useState([]);
-  const [selectedVerification, setSelectedVerification] = useState(null);
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [stats, setStats] = useState({ total: 0, pending: 0, volunteers: 0, resolved: 0 });
   const [showAuth, setShowAuth] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
@@ -65,11 +66,20 @@ export default function AdminDashboard() {
           }));
         }
 
-        const resStats = await fetch(`${API_URL}/api/verifications`, { headers });
-        const verifData = await resStats.json();
-        if (Array.isArray(verifData)) {
-          setVerifications(verifData);
-          if (verifData.length > 0) setSelectedVerification(verifData[0]);
+        const tasksRes = await fetch(`${API_URL}/api/tasks`, { headers });
+        const tasksData = await tasksRes.json();
+        console.log("TASKS:", tasksData);
+        if (Array.isArray(tasksData)) {
+          const completed = tasksData.filter(
+            task =>
+              task.status &&
+              task.status.toLowerCase() === "completed"
+          );
+          console.log("COMPLETED TASKS:", completed);
+          setCompletedTasks(completed);
+          if (completed.length > 0) {
+            setSelectedTask(completed[0]);
+          }
         }
       } catch (err) { 
         console.error("System pipeline fetch mismatch:", err); 
@@ -156,10 +166,7 @@ export default function AdminDashboard() {
           resolved: (status === 'Approved' || status === 'Resolved') ? prev.resolved + 1 : prev.resolved
         }));
       } else {
-        // If backend fails but you are just testing the map visual flow:
         alert(`${data.message || "Error"}. (Bypassing locally for map preview)`);
-        
-        // OPTIONAL DEVELOPMENT BYPASS: Force it onto your map visually regardless of backend blocks
         setReports(prev => prev.map(r => r._id === id ? { ...r, status: 'Approved' } : r));
       }
     } catch (err) { 
@@ -167,26 +174,63 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleVerificationUpdate = async (id, status) => {
-    try {
-      const response = await fetch(`${API_URL}/api/verifications/${id}`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: JSON.stringify({ status })
-      });
-      if (response.ok) {
-        setVerifications(prev => prev.filter(v => v._id !== id));
-        setSelectedVerification(null);
-        alert(`Verification marked as: ${status}`);
-      } else {
-        const errData = await response.json();
-        alert(errData.message || "Failed to process item.");
+  const handleVerificationUpdate = async (id) => {
+      try {
+
+        const response = await fetch(
+          `${API_URL}/api/tasks/${id}/verify`,
+          {
+            method: "POST"
+          }
+        );
+
+        if (response.ok) {
+
+          setCompletedTasks(prev =>
+            prev.filter(task => task._id !== id)
+          );
+
+          setSelectedTask(null);
+
+          alert("Mission Verified Successfully");
+
+        } else {
+
+          alert("Verification Failed");
+
+        }
+
+      } catch (err) {
+        console.log(err);
       }
-    } catch (err) { console.error(err); }
-  };
+    };
+
+   const handleRejectTask = async (id) => {
+      try {
+
+        const response = await fetch(
+          `${API_URL}/api/tasks/${id}/reject`,
+          {
+            method: "POST"
+          }
+        );
+
+        if (response.ok) {
+
+          setCompletedTasks(prev =>
+            prev.filter(task => task._id !== id)
+          );
+
+          setSelectedTask(null);
+
+          alert("Proof Rejected");
+
+        }
+
+      } catch (err) {
+        console.log(err);
+      }
+    };
 
   return (
     <div className="flex h-screen bg-[#050816] text-white font-sans relative overflow-hidden">
@@ -376,51 +420,127 @@ export default function AdminDashboard() {
                 <div className="w-1/3 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] flex flex-col overflow-hidden">
                   <div className="p-4 border-b border-[#1C223C] bg-[#0D122B] text-[10px] font-black text-gray-500 uppercase tracking-widest">Pending Verifications</div>
                   <div className="flex-1 overflow-y-auto">
-                    {verifications.length > 0 ? verifications.map(v => (
-                      <div key={v._id} onClick={() => setSelectedVerification(v)} 
-                        className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedVerification?._id === v._id ? 'bg-[#11162B] border-l-4 border-orange-500' : ''}`}>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-500 mb-2 inline-block">
-                          {v.status}
-                        </span>
-                        <h4 className="font-bold text-sm truncate">Mission Verification</h4>
-                        <p className="text-xs text-gray-400 mt-1">Volunteer: {v.volunteerName}</p>
-                      </div>
-                    )) : <p className="p-10 text-center text-gray-600">No verifications pending.</p>}
+                      {completedTasks.length > 0 ? (
+                        completedTasks.map(task => (
+                          <div
+                            key={task._id}
+                            onClick={() => {
+                              setSelectedTask(task);
+                            }}
+                            className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${
+                              selectedTask?._id === task._id
+                                ? "bg-[#11162B] border-l-4 border-orange-500"
+                                : ""
+                            }`}
+                          >
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 mb-2 inline-block">
+                              {task.status}
+                            </span>
+
+                            <h4 className="font-bold text-sm truncate">
+                              {task.reportId?.category}
+                            </h4>
+
+                            <p className="text-xs text-gray-400 mt-1">
+                              Volunteer: {task.volunteerId?.name}
+                            </p>
+
+                            <p className="text-xs text-gray-500 mt-1">
+                              {task.reportId?.location}
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="p-10 text-center text-gray-600">
+                          No completed tasks awaiting verification.
+                        </p>
+                      )}
                   </div>
                 </div>
 
-                <div className="flex-1 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] p-8 overflow-y-auto">
-                  {selectedVerification ? (
-                    <div className="space-y-6">
-                      <h3 className="text-xl font-bold italic tracking-tighter uppercase">Proof Analysis</h3>
-                      <div className="bg-[#11162B] border border-[#1C223C] rounded-3xl p-6 flex justify-between items-center">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">AI Confidence</p>
-                          <p className="font-black text-xl text-orange-500">{selectedVerification.aiConfidence ? (selectedVerification.aiConfidence * 100).toFixed(0) : "92"}%</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-gray-500 mb-1">Volunteer</p>
-                          <p className="font-bold text-white">{selectedVerification.volunteerName}</p>
+                <div className="flex-1 bg-[#0A0F24] border border-[#1C223C] rounded-[32px] p-8 overflow-y-auto space-y-6">
+                  {selectedTask ? (
+                    <>
+                      <div className="bg-[#11162B] border border-[#1C223C] rounded-3xl p-6">
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Category</p>
+                            <p className="font-bold text-orange-500">
+                              {selectedTask.reportId?.category || "General"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Volunteer</p>
+                            <p className="font-bold text-white">
+                              {selectedTask.volunteerId?.name || "N/A"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Location</p>
+                            <p className="text-white">
+                              {selectedTask.reportId?.location || "N/A"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Phone</p>
+                            <p className="text-white">
+                              {selectedTask.volunteerId?.phone || "N/A"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Severity</p>
+                            <p className="text-orange-500 font-bold">
+                              {selectedTask.reportId?.severityScore || 0}/10
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Status</p>
+                            <p className="text-green-400 font-bold">
+                              {selectedTask.status}
+                            </p>
+                          </div>
                         </div>
                       </div>
 
-                      {selectedVerification.proofImageUrl && (
+                      {/* Functional proof image component bound to selectedTask */}
+                      {selectedTask.proofImageUrl && (
                         <div className="border border-[#1C223C] rounded-3xl overflow-hidden bg-[#11162B]">
-                          <div className="p-3 border-b border-[#1C223C] text-xs font-bold text-gray-500 uppercase">Uploaded Proof</div>
-                          <img src={`${API_URL}/${selectedVerification.proofImageUrl.replace(/\\/g, "/")}`} alt="Proof" className="w-full h-auto max-h-96 object-contain" />
+                          <div className="p-3 border-b border-[#1C223C] text-xs font-bold text-gray-500 uppercase">
+                            Uploaded Proof
+                          </div>
+                          <img
+                            src={selectedTask.proofImageUrl}
+                            alt="Proof"
+                            className="w-full h-auto max-h-96 object-contain"
+                          />
                         </div>
                       )}
 
                       <div className="flex gap-4">
-                        <button onClick={() => handleVerificationUpdate(selectedVerification._id, "Approved")} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all">
+                        <button 
+                          onClick={() => handleVerificationUpdate(selectedTask._id)} 
+                          className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all"
+                        >
                           Verify & Close Mission
                         </button>
-                        <button onClick={() => handleVerificationUpdate(selectedVerification._id, "Rejected")} className="flex-1 border-2 border-red-900/50 hover:border-red-500 text-red-500 font-bold py-3 rounded-xl transition-all">
+                        <button 
+                          onClick={() => handleRejectTask(selectedTask._id)} 
+                          className="flex-1 border-2 border-red-900/50 hover:border-red-500 text-red-500 font-bold py-3 rounded-xl transition-all"
+                        >
                           Reject Proof
                         </button>
                       </div>
+                    </>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-600 italic">
+                      Select a completed task
                     </div>
-                  ) : <div className="h-full flex items-center justify-center text-gray-600 italic">Select a verification request</div>}
+                  )}
                 </div>
               </div>
             </div>

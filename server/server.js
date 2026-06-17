@@ -10,6 +10,7 @@ import Report from './models/Report.js';
 import Verification from './models/Verification.js';
 import Task from './models/Task.js';
 import Volunteer from './models/Volunteer.js';
+import Notification from './models/Notification.js';
 import User from './models/User.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import bcrypt from 'bcryptjs';
@@ -151,8 +152,7 @@ async function suggestVolunteer(report) {
     console.log("ALL VOLUNTEERS:", allVolunteers);
 
     const volunteers = await Volunteer.find({
-        availability: true,
-        skills: report.category
+        availability: true
     });
 
     console.log("MATCHING VOLUNTEERS:", volunteers);
@@ -178,6 +178,7 @@ async function suggestVolunteer(report) {
     return best;
 }
 async function assignTask(report) {
+    console.log("ENTERED ASSIGN TASK");
     console.log("REPORT CATEGORY:", report.category);
 
     const volunteer = await suggestVolunteer(report);
@@ -190,15 +191,23 @@ async function assignTask(report) {
         reportId: report._id,
         volunteerId: volunteer._id
     });
-    await Notification.create({
-        volunteerId: volunteer._id,
 
-        title: "New Emergency Assigned",
+    console.log("TASK CREATED:", task);
+    console.log("BEFORE NOTIFICATION");
+    try {
+        const notification = await Notification.create({
+            volunteerId: volunteer._id,
+            title: "New Emergency Assigned",
+            message: `${report.category} emergency assigned at ${report.location}`,
+            type: "TASK"
+        });
 
-        message: `${report.category} emergency assigned at ${report.location}`,
+        console.log("NOTIFICATION CREATED:", notification);
 
-        type: "TASK"
-    });
+    } catch(err) {
+        console.log("NOTIFICATION ERROR:", err);
+    }
+    
     volunteer.availability = false;
     await volunteer.save();
 
@@ -350,6 +359,8 @@ app.patch('/api/reports/:id', async (req, res) => {
 
         if (status === "Approved") {
             try {
+                console.log("APPROVING REPORT:", report._id);
+                console.log("REPORT CATEGORY:", report.category);
                 // Try standard assignment
                 await assignTask(report);
             } catch (err) {
@@ -375,6 +386,26 @@ app.patch('/api/reports/:id', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// the reject endpoint for volunteers to reject assigned tasks and trigger reassignment logic
+app.post("/api/tasks/:id/reject", async (req, res) => {
+
+  const task = await Task.findById(req.params.id);
+
+  if (!task) {
+    return res.status(404).json({
+      message: "Task not found"
+    });
+  }
+
+  task.status = "Assigned";
+
+  await task.save();
+
+  res.json({
+    success: true
+  });
 });
 
 // 4. Fetch Verification Queue
@@ -442,23 +473,30 @@ app.get('/api/tasks/me', verifyToken, async (req, res) => {
 });
 
 app.post("/api/tasks/:id/complete", upload.single("proofImage"), async (req, res) => {
+    console.log("========== COMPLETE ROUTE HIT ==========");
+    console.log("REQ FILE:", req.file);
     try {
         let cloudProofUrl = null;
         if (req.file) {
             cloudProofUrl = await uploadToCloudinary(req.file.buffer, 'sahayak_proofs');
+            console.log("CLOUD URL:", cloudProofUrl);
         }
 
         const task = await Task.findById(req.params.id);
         if (!task) return res.status(404).json({ message: "Task reference missing" });
 
         task.status = "COMPLETED";
-        task.proofImage = cloudProofUrl;
+        task.proofImageUrl = cloudProofUrl;
         await task.save();
+        console.log("TASK UPDATED");
 
         const report = await Report.findById(task.reportId);
         const volunteer = await Volunteer.findById(task.volunteerId);
 
-        await Verification.create({
+        console.log("REPORT FOUND:", report?._id);
+        console.log("VOLUNTEER FOUND:", volunteer?.name);
+
+        const verification  = await Verification.create({
             reportId: task.reportId,
             volunteerName: volunteer.name,
             volunteerId: volunteer._id,
@@ -466,9 +504,11 @@ app.post("/api/tasks/:id/complete", upload.single("proofImage"), async (req, res
             aiConfidence: report.confidence || 1.0,
             status: "Pending"
         });
+        console.log("VERIFICATION CREATED:", verification);
 
         res.json(task);
     } catch (err) {
+        console.error("TASK COMPLETION ERROR:", err);
         res.status(500).json({ error: err.message });
     }
 });

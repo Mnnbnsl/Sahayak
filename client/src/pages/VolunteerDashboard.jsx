@@ -85,27 +85,23 @@ export default function VolunteerDashboard() {
   }, []);
 
   useEffect(() => {
-    const assigned =
-      tasks.filter(
-        t => t.status === "Assigned"
-      ).length;
+    const assigned = tasks.filter(
+      t => t.status?.toLowerCase() === "assigned"
+    ).length;
 
-    const completed =
-      tasks.filter(
-        t => t.status === "Completed"
-      ).length;
+    const completed = tasks.filter(
+      t => t.status?.toLowerCase() === "completed"
+    ).length;
 
-    const verified =
-      tasks.filter(
-        t => t.status === "Verified"
-      ).length;
+    const verified = tasks.filter(
+      t => t.status?.toLowerCase() === "verified"
+    ).length;
 
     setStats({
       assigned,
       completed,
       verified
     });
-
   }, [tasks]);
 
   const fetchTasks = async () => {
@@ -178,14 +174,16 @@ export default function VolunteerDashboard() {
 
   const completeTask = async (taskId) => {
     try {
+      console.log("COMPLETE BUTTON CLICKED", taskId);
       const formData = new FormData();
+      console.log("SELECTED IMAGE:", selectedImages[taskId]);
       if (selectedImages[taskId]) {
         formData.append("proofImage", selectedImages[taskId]);
       } else {
         alert("Please select a valid image file as proof before submission.");
         return;
       }
-
+      console.log("BEFORE FETCH");
       const response = await fetch(`${API_URL}/api/tasks/${taskId}/complete`, {
         method: "POST",
         body: formData
@@ -673,7 +671,48 @@ export default function VolunteerDashboard() {
                 /* INTERACTIVE LIST OF ALL ASSIGNED MISSIONS */
                 <div>
                   <div className="mb-6">
-                    <h1 className="text-3xl font-extrabold tracking-tight">Assigned Task Logs</h1>
+                    <h1 className="text-3xl font-extrabold tracking-tight">
+                      Assigned Task Logs
+                    </h1>
+
+                    <p className="text-gray-400 mt-2">
+                      Manage your assigned emergency missions and track their status.
+                    </p>
+                  </div>
+
+                  {/* Mission Statistics */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+                    <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-5">
+                      <p className="text-gray-400 text-sm">
+                        Assigned Missions
+                      </p>
+
+                      <h2 className="text-3xl font-black text-[#F97316]">
+                        {stats.assigned}
+                      </h2>
+                    </div>
+
+                    <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-5">
+                      <p className="text-gray-400 text-sm">
+                        Pending Verification
+                      </p>
+
+                      <h2 className="text-3xl font-black text-blue-400">
+                        {stats.completed}
+                      </h2>
+                    </div>
+
+                    <div className="bg-[#11162B] border border-[#232B4C] rounded-2xl p-5">
+                      <p className="text-gray-400 text-sm">
+                        Resolved Cases
+                      </p>
+
+                      <h2 className="text-3xl font-black text-green-400">
+                        {stats.verified}
+                      </h2>
+                    </div>
+
                   </div>
 
                   {loading ? (

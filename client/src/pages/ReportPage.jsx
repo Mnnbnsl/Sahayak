@@ -17,6 +17,7 @@ export default function ReportPage() {
 
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -29,52 +30,51 @@ export default function ReportPage() {
   });
 
   // Capture GPS automatically
-// Capture GPS automatically
-useEffect(() => {
-  if (!navigator.geolocation) {
-    console.log("Geolocation not supported");
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      console.log("Geolocation not supported");
 
-    setFormData((prev) => ({
-      ...prev,
-      latitude: 31.6340,
-      longitude: 74.8723
-    }));
-
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      console.log(
-        "GPS Captured:",
-        position.coords.latitude,
-        position.coords.longitude
-      );
-
-      setFormData((prev) => ({
-        ...prev,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
-      }));
-    },
-    (error) => {
-      console.log("GPS ERROR CODE:", error.code);
-      console.log("GPS ERROR MESSAGE:", error.message);
-
-      // Fallback to Amritsar
       setFormData((prev) => ({
         ...prev,
         latitude: 31.6340,
         longitude: 74.8723
       }));
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
+
+      return;
     }
-  );
-}, []);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log(
+          "GPS Captured:",
+          position.coords.latitude,
+          position.coords.longitude
+        );
+
+        setFormData((prev) => ({
+          ...prev,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }));
+      },
+      (error) => {
+        console.log("GPS ERROR CODE:", error.code);
+        console.log("GPS ERROR MESSAGE:", error.message);
+
+        // Fallback to Amritsar
+        setFormData((prev) => ({
+          ...prev,
+          latitude: 31.6340,
+          longitude: 74.8723
+        }));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  }, []);
 
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -93,7 +93,12 @@ useEffect(() => {
     data.append("phone", formData.phone);
     data.append("description", formData.description);
     data.append("location", formData.location);
-    data.append("category", formData.category);
+    
+    // Send custom category text if "Other" is selected, otherwise send the dropdown selection
+    data.append(
+      "category",
+      formData.category === "Other" ? customCategory : formData.category
+    );
 
     data.append("latitude", formData.latitude);
     data.append("longitude", formData.longitude);
@@ -243,6 +248,9 @@ useEffect(() => {
               })
             }
           />
+          <p className="text-xs text-gray-500 mt-1">
+            AI will analyze your description and image to verify the emergency category.
+          </p>
         </div>
 
         {/* Category */}
@@ -254,7 +262,7 @@ useEffect(() => {
           <div className="relative">
             <select
               required
-              className="w-full bg-[#050816] border border-[#2A3459] rounded-xl px-4 py-3 appearance-none"
+              className="w-full bg-[#050816] border border-[#2A3459] rounded-xl px-4 py-3 appearance-none focus:border-[#F97316] outline-none"
               onChange={(e) =>
                 setFormData({
                   ...formData,
@@ -263,14 +271,33 @@ useEffect(() => {
               }
             >
               <option value="">Select Category</option>
-              <option value="Medical">Medical</option>
-              <option value="Fire">Fire</option>
-              <option value="Accident">Accident</option>
+              <option value="Medical">Medical Emergency</option>
+              <option value="Fire">Fire Incident</option>
+              <option value="Accident">Road Accident</option>
+              <option value="Flood">Flood / Water Logging</option>
+              <option value="Earthquake">Earthquake</option>
+              <option value="Building Collapse">Building Collapse</option>
+              <option value="Landslide">Landslide</option>
+              <option value="Rescue">Rescue Required</option>
               <option value="Other">Other</option>
             </select>
 
-            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2" />
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
           </div>
+
+          {/* Custom Category Input Field (Shown only when 'Other' is selected) */}
+          {formData.category === "Other" && (
+            <div className="mt-3 animate-fadeIn">
+              <input
+                required
+                type="text"
+                placeholder="Specify Emergency Type"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                className="w-full bg-[#050816] border border-[#2A3459] rounded-xl px-4 py-3 outline-none focus:border-[#F97316]"
+              />
+            </div>
+          )}
         </div>
 
         {/* Upload */}
@@ -289,17 +316,19 @@ useEffect(() => {
 
           <label
             htmlFor="img-upload"
-            className="border-2 border-dashed border-[#2A3459] rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer"
+            className="border-2 border-dashed border-[#2A3459] rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-[#F97316] transition-colors"
           >
             {selectedImage ? (
               <>
                 <CheckCircle className="w-12 h-12 text-green-500" />
-                <p>{selectedImage.name}</p>
+                <p className="mt-2 text-sm text-gray-300 text-center break-all px-4">
+                  {selectedImage.name}
+                </p>
               </>
             ) : (
               <>
                 <Upload className="w-12 h-12 text-gray-500" />
-                <p>Click to upload photo</p>
+                <p className="mt-2 text-sm text-gray-400">Click to upload photo</p>
               </>
             )}
           </label>
@@ -309,7 +338,7 @@ useEffect(() => {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full py-4 rounded-xl bg-[#F97316] font-bold flex justify-center items-center gap-2"
+          className="w-full py-4 rounded-xl bg-[#F97316] hover:bg-[#EA580C] disabled:bg-gray-700 disabled:cursor-not-allowed font-bold flex justify-center items-center gap-2 transition-colors text-white shadow-lg"
         >
           {isSubmitting ? (
             <>
@@ -318,7 +347,7 @@ useEffect(() => {
             </>
           ) : (
             <>
-              <Send />
+              <Send className="w-5 h-5" />
               Submit for AI Analysis
             </>
           )}

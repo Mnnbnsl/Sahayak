@@ -16,6 +16,11 @@ const TaskSchema = new mongoose.Schema({
     default: "Assigned"
   },
 
+  proofImageUrl: {
+    type: String,
+    default: null
+  },
+
   createdAt: {
     type: Date,
     default: Date.now

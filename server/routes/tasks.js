@@ -24,55 +24,6 @@ router.get(
     res.json(tasks);
   }
 );
-// COMPLETE TASK
-router.post(
-  "/:id/complete",
-  async (req, res) => {
-    try {
-      const task =
-        await Task.findById(
-          req.params.id
-        );
-
-      if (!task) {
-        return res
-          .status(404)
-          .json({
-            message:
-              "Task not found"
-          });
-      }
-
-      task.status = "Completed";
-
-      await task.save();
-
-      const volunteer =
-        await Volunteer.findById(
-          task.volunteerId
-        );
-
-      if (volunteer) {
-        volunteer.tasksCompleted += 1;
-
-        // Volunteer becomes available again
-        volunteer.availability = true;
-
-        await volunteer.save();
-    }
-
-      res.json({
-        message:
-          "Task completed successfully",
-        task
-      });
-    } catch (err) {
-      res.status(500).json({
-        message: err.message
-      });
-    }
-  }
-);
 
 // VERIFY TASK FROM ADMIN SIDE
 router.patch("/:id/verify", async (req, res) => {
