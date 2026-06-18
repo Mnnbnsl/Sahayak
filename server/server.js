@@ -407,7 +407,49 @@ app.post("/api/tasks/:id/reject", async (req, res) => {
     success: true
   });
 });
+// 3. Update user profile settings
+app.patch("/api/settings", async (req, res) => {
+  console.log("BODY RECEIVED:");
+  console.log(req.body);
+  try {
 
+    const {
+      id,
+      fullName,
+      email,
+      notificationSettings,
+      preferences
+    } = req.body;
+
+    const updatedUser =
+      await User.findByIdAndUpdate(
+        id,
+        {
+          fullName,
+          email,
+          notificationSettings,
+          preferences
+        },
+        {
+          new: true
+        }
+      ).select("-password");
+    console.log("UPDATED USER:");
+    console.log(updatedUser);
+    res.json(updatedUser);
+
+  }
+  catch (err) {
+    console.error("ERROR:");
+    console.error(err);
+
+    res.status(500).json({
+      message: "Update Failed"
+    });
+
+  }
+
+});
 // 4. Fetch Verification Queue
 app.get('/api/verifications', async (req, res) => {
     try {
