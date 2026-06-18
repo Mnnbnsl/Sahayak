@@ -79,7 +79,7 @@ async function analyzeWithLLM(data) {
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `
+const prompt = `
 ### ROLE
 You are an expert Emergency Response Dispatcher and Incident Analyst. Your goal is to triage incoming reports to determine if they require immediate professional intervention.
 
@@ -96,11 +96,10 @@ You are an expert Emergency Response Dispatcher and Incident Analyst. Your goal 
    - 7-10 (High/Critical): Immediate life threat, mass casualties, or widespread disaster.
 3. **confidence**: A decimal between 0 and 1 representing how certain you are based on the clarity of the description.
 
-### CONSTRAINTS FOLLOW THEM STRICTLY
-- Return STRICT JSON ONLY.
-- Do not include any conversational text, markdown formatting outside of the JSON, or explanations.
-- The "reasoning" field must cite specific cues from the description.
-- Dont return null values or undefined for any of the fields.
+### CONSTRAINTS
+- Return a valid JSON object matching the schema below exactly.
+- Do not output any markdown code blocks (such as \`\`\`json), trailing commas, text explanations, or notes outside the raw JSON string.
+- Ensure no property values are null or undefined.
 
 ### OUTPUT SCHEMA 
 {
@@ -391,21 +390,27 @@ app.patch('/api/reports/:id', async (req, res) => {
 // the reject endpoint for volunteers to reject assigned tasks and trigger reassignment logic
 app.post("/api/tasks/:id/reject", async (req, res) => {
 
-  const task = await Task.findById(req.params.id);
+  try {
+    const task = await Task.findById(req.params.id);
 
-  if (!task) {
-    return res.status(404).json({
-      message: "Task not found"
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found"
+      });
+    }
+
+    task.status = "Assigned";
+
+    await task.save();
+
+    res.json({
+      success: true
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message
     });
   }
-
-  task.status = "Assigned";
-
-  await task.save();
-
-  res.json({
-    success: true
-  });
 });
 // 3. Update user profile settings
 app.patch("/api/settings", async (req, res) => {
@@ -450,6 +455,75 @@ app.patch("/api/settings", async (req, res) => {
   }
 
 });
+
+// 4. Change password route
+app.patch(
+  "/api/auth/change-password",
+  async (req, res) => {
+
+    try {
+
+      const {
+        userId,
+        currentPassword,
+        newPassword
+      } = req.body;
+
+      const user =
+        await User.findById(userId);
+
+      if (!user) {
+
+        return res.status(404).json({
+          message: "User not found"
+        });
+
+      }
+
+      const isMatch =
+        await bcrypt.compare(
+          currentPassword,
+          user.password
+        );
+
+      if (!isMatch) {
+
+        return res.status(400).json({
+          message:
+            "Current password incorrect"
+        });
+
+      }
+
+      const hashedPassword =
+        await bcrypt.hash(
+          newPassword,
+          10
+        );
+
+      user.password =
+        hashedPassword;
+
+      await user.save();
+
+      res.json({
+        message:
+          "Password updated successfully"
+      });
+
+    } catch (err) {
+
+      console.error(err);
+
+      res.status(500).json({
+        message:
+          "Server Error"
+      });
+
+    }
+
+  }
+);
 // 4. Fetch Verification Queue
 app.get('/api/verifications', async (req, res) => {
     try {

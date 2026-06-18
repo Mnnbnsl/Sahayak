@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useNavigate } from "react-router-dom";
+import AdminSettings from "./AdminSettings";
 import { 
   LayoutDashboard, ClipboardList, Users, CheckCircle, 
   Settings, Search, Bell, Activity, ShieldCheck, 
@@ -12,16 +13,53 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-// Override default marker asset paths to fix invisible pin drops in Vite
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
-
-// Fixed string layout from https:// to http:// to allow clear communication to port 5000
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+// --- Dynamic Color-Coded Leaflet Marker Generator ---
+const createColoredMarker = (status) => {
+  let color = "#EF4444"; // Default: Red 🔴
+  
+  switch (status?.toLowerCase()) {
+    case "pending":
+      color = "#EF4444"; // Red 🔴
+      break;
+    case "assigned":
+      color = "#3B82F6"; // Blue 🔵
+      break;
+    case "completed":
+      color = "#F59E0B"; // Yellow 🟡
+      break;
+    case "verified":
+    case "approved":
+    case "resolved":
+      color = "#10B981"; // Green 🟢
+      break;
+    default:
+      color = "#EF4444";
+  }
+
+  // A sleek custom SVG pin with an animated wave ring matching the dark theme layout
+  const svgTemplate = `
+    <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" style="overflow: visible;">
+      <circle cx="18" cy="18" r="10" fill="${color}" fill-opacity="0.3" style="transform-origin: center; animation: pulse 2s infinite ease-out;"/>
+      <path d="M18 2C11.4 2 6 7.4 6 14c0 7.5 10.7 18.7 11.2 19.3.4.4 1.1.4 1.5 0C19.3 32.7 30 21.5 30 14c0-6.6-5.4-12-12-12zm0 16.5c-2.5 0-4.5-2-4.5-4.5s2-4.5 4.5-4.5 4.5 2 4.5 4.5-2 4.5-4.5 4.5z" fill="${color}"/>
+      <style>
+        @keyframes pulse {
+          0% { r: 8; opacity: 1; }
+          100% { r: 22; opacity: 0; }
+        }
+      </style>
+    </svg>
+  `;
+
+  return L.divIcon({
+    html: svgTemplate,
+    className: "custom-leaflet-marker",
+    iconSize: [36, 36],
+    iconAnchor: [18, 34],
+    popupAnchor: [0, -30],
+  });
+};
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -40,7 +78,6 @@ export default function AdminDashboard() {
   const [formData, setFormData] = useState({ fullName: "", email: "", password: "" });
 
   useEffect(() => {
-    // Safely pull user down on application startup bootstrap
     try {
       const savedUser = localStorage.getItem("user");
       if (savedUser) setUser(JSON.parse(savedUser));
@@ -62,20 +99,16 @@ export default function AdminDashboard() {
             ...prev, 
             total: data.length,
             pending: data.filter(r => r && r.status === 'Pending').length,
-            resolved: data.filter(r => r && (r.status === 'Approved' || r.status === 'Resolved')).length
+            resolved: data.filter(r => r && (r.status === 'Approved' || r.status === 'Resolved' || r.status === 'Verified')).length
           }));
         }
 
         const tasksRes = await fetch(`${API_URL}/api/tasks`, { headers });
         const tasksData = await tasksRes.json();
-        console.log("TASKS:", tasksData);
         if (Array.isArray(tasksData)) {
           const completed = tasksData.filter(
-            task =>
-              task.status &&
-              task.status.toLowerCase() === "completed"
+            task => task.status && task.status.toLowerCase() === "completed"
           );
-          console.log("COMPLETED TASKS:", completed);
           setCompletedTasks(completed);
           if (completed.length > 0) {
             setSelectedTask(completed[0]);
@@ -88,7 +121,6 @@ export default function AdminDashboard() {
     
     fetchStats();
 
-    // Instantiate Socket inside useEffect to avoid memory leak handshakes
     const socket = io(API_URL, { transports: ['websocket'] });
 
     socket.on("new-report", (newReport) => {
@@ -148,22 +180,16 @@ export default function AdminDashboard() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem("token")}`
         },
-        body: JSON.stringify({ 
-          status,
-          forceApproval: true // ← Send a flag telling the backend to map it anyway even if volunteers are offline
-        })
+        body: JSON.stringify({ status, forceApproval: true })
       });
 
       const data = await response.json();
-
-      console.log("PATCH RESPONSE:", data);
-      console.log("STATUS CODE:", response.status);
       if (response.ok) {
         setReports(prev => prev.map(r => r._id === id ? { ...r, status } : r));
         setStats(prev => ({
           ...prev,
           pending: status === 'Pending' ? prev.pending : Math.max(0, prev.pending - 1),
-          resolved: (status === 'Approved' || status === 'Resolved') ? prev.resolved + 1 : prev.resolved
+          resolved: (status === 'Approved' || status === 'Resolved' || status === 'Verified') ? prev.resolved + 1 : prev.resolved
         }));
       } else {
         alert(`${data.message || "Error"}. (Bypassing locally for map preview)`);
@@ -175,62 +201,40 @@ export default function AdminDashboard() {
   };
 
   const handleVerificationUpdate = async (id) => {
-      try {
-
-        const response = await fetch(
-          `${API_URL}/api/tasks/${id}/verify`,
-          {
-            method: "POST"
-          }
-        );
-
-        if (response.ok) {
-
-          setCompletedTasks(prev =>
-            prev.filter(task => task._id !== id)
-          );
-
-          setSelectedTask(null);
-
-          alert("Mission Verified Successfully");
-
-        } else {
-
-          alert("Verification Failed");
-
+    try {
+      const response = await fetch(`${API_URL}/api/tasks/${id}/verify`, { method: "POST" });
+      if (response.ok) {
+        const taskToVerify = completedTasks.find(t => t._id === id);
+        if (taskToVerify && taskToVerify.reportId) {
+          setReports(prev => prev.map(r => r._id === taskToVerify.reportId._id ? { ...r, status: 'Verified' } : r));
         }
-
-      } catch (err) {
-        console.log(err);
+        setCompletedTasks(prev => prev.filter(task => task._id !== id));
+        setSelectedTask(null);
+        alert("Mission Verified Successfully");
+      } else {
+        alert("Verification Failed");
       }
-    };
+    } catch (err) {
+      console.log(err);
+    }
+  };
 
-   const handleRejectTask = async (id) => {
-      try {
-
-        const response = await fetch(
-          `${API_URL}/api/tasks/${id}/reject`,
-          {
-            method: "POST"
-          }
-        );
-
-        if (response.ok) {
-
-          setCompletedTasks(prev =>
-            prev.filter(task => task._id !== id)
-          );
-
-          setSelectedTask(null);
-
-          alert("Proof Rejected");
-
+  const handleRejectTask = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/api/tasks/${id}/reject`, { method: "POST" });
+      if (response.ok) {
+        const taskToReject = completedTasks.find(t => t._id === id);
+        if (taskToReject && taskToReject.reportId) {
+          setReports(prev => prev.map(r => r._id === taskToReject.reportId._id ? { ...r, status: 'Assigned' } : r));
         }
-
-      } catch (err) {
-        console.log(err);
+        setCompletedTasks(prev => prev.filter(task => task._id !== id));
+        setSelectedTask(null);
+        alert("Proof Rejected");
       }
-    };
+    } catch (err) {
+      console.log(err);
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[#050816] text-white font-sans relative overflow-hidden">
@@ -276,7 +280,7 @@ export default function AdminDashboard() {
           <NavItem icon={<LayoutDashboard size={20}/>} label="Dashboard" active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
           <NavItem icon={<ClipboardList size={20}/>} label="Review Queue" active={activeTab === "review"} onClick={() => setActiveTab("review")} />
           <NavItem icon={<ShieldCheck size={20}/>} label="Verification" active={activeTab === "verification"} onClick={() => setActiveTab("verification")} />
-          <NavItem icon={<Settings size={20}/>} label="Settings" onClick={() => alert("Coming soon")} />
+          <NavItem icon={<Settings size={20}/>} label="Settings" active={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
         </nav>
       </aside>
 
@@ -329,16 +333,26 @@ export default function AdminDashboard() {
               
               {/* INTERACTIVE COMPONENT MAP TILES */}
               <div className="h-[500px] overflow-hidden rounded-3xl border border-[#1C223C] relative z-10">
-                <MapContainer center={[30.7333, 76.7794]} zoom={6} style={{ height: "100%", width: "100%" }}>
+                <MapContainer center={[23.2156, 72.6369]} zoom={5} style={{ height: "100%", width: "100%" }}>
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  {Array.isArray(reports) && reports.filter(r => r && r.status === "Approved").map(report => {
-                    const lat = Number(report.latitude) || 30.7333;
-                    const lng = Number(report.longitude) || 76.7794;
+                  {/* Filter completely removed so Pending pins (like Gandhinagar) are immediately visible! */}
+                  {Array.isArray(reports) && reports.filter(r => r).map(report => {
+                    const lat = Number(report.latitude) || 23.2156;
+                    const lng = Number(report.longitude) || 72.6369;
                     return (
-                      <Marker key={report._id} position={[lat, lng]}>
+                      <Marker 
+                        key={report._id} 
+                        position={[lat, lng]} 
+                        icon={createColoredMarker(report.status)}
+                      >
                         <Popup>
                           <div className="text-black p-0.5">
-                            <h3 className="font-bold text-orange-600">{report.category}</h3>
+                            <div className="flex items-center justify-between gap-4 mb-1">
+                              <h3 className="font-bold text-orange-600 m-0 text-sm">{report.category || "Incident"}</h3>
+                              <span className="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-gray-100 text-gray-800 border border-gray-300">
+                                {report.status || "Pending"}
+                              </span>
+                            </div>
                             <p className="text-xs my-1 text-gray-700">{report.description}</p>
                             <div className="text-[10px] font-bold text-gray-500">Severity: {report.severityScore || 0}/10</div>
                           </div>
@@ -365,9 +379,9 @@ export default function AdminDashboard() {
                         className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedReport?._id === r._id ? 'bg-[#11162B] border-l-4 border-orange-500' : ''}`}>
                         <div className="flex justify-between items-start mb-2">
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded
-                            ${r.status === "Pending" ? "bg-yellow-500/10 text-yellow-500" :
-                            r.status === "Approved" ? "bg-green-500/10 text-green-500" :
-                            r.status === "Assigned" ? "bg-blue-500/10 text-blue-500" : "bg-red-500/10 text-red-500"}`}>
+                            ${r.status === "Pending" ? "bg-red-500/10 text-red-500" :
+                            r.status === "Assigned" ? "bg-blue-500/10 text-blue-500" :
+                            r.status === "Completed" ? "bg-amber-500/10 text-amber-500" : "bg-green-500/10 text-green-500"}`}>
                             {r.status}
                           </span>
                         </div>
@@ -424,36 +438,19 @@ export default function AdminDashboard() {
                         completedTasks.map(task => (
                           <div
                             key={task._id}
-                            onClick={() => {
-                              setSelectedTask(task);
-                            }}
-                            className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${
-                              selectedTask?._id === task._id
-                                ? "bg-[#11162B] border-l-4 border-orange-500"
-                                : ""
-                            }`}
+                            onClick={() => setSelectedTask(task)}
+                            className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedTask?._id === task._id ? "bg-[#11162B] border-l-4 border-orange-500" : ""}`}
                           >
                             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 mb-2 inline-block">
                               {task.status}
                             </span>
-
-                            <h4 className="font-bold text-sm truncate">
-                              {task.reportId?.category}
-                            </h4>
-
-                            <p className="text-xs text-gray-400 mt-1">
-                              Volunteer: {task.volunteerId?.name}
-                            </p>
-
-                            <p className="text-xs text-gray-500 mt-1">
-                              {task.reportId?.location}
-                            </p>
+                            <h4 className="font-bold text-sm truncate">{task.reportId?.category}</h4>
+                            <p className="text-xs text-gray-400 mt-1">Volunteer: {task.volunteerId?.name}</p>
+                            <p className="text-xs text-gray-500 mt-1">{task.reportId?.location}</p>
                           </div>
                         ))
                       ) : (
-                        <p className="p-10 text-center text-gray-600">
-                          No completed tasks awaiting verification.
-                        </p>
+                        <p className="p-10 text-center text-gray-600">No completed tasks awaiting verification.</p>
                       )}
                   </div>
                 </div>
@@ -465,85 +462,51 @@ export default function AdminDashboard() {
                         <div className="grid md:grid-cols-2 gap-6">
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Category</p>
-                            <p className="font-bold text-orange-500">
-                              {selectedTask.reportId?.category || "General"}
-                            </p>
+                            <p className="font-bold text-orange-500">{selectedTask.reportId?.category || "General"}</p>
                           </div>
-
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Volunteer</p>
-                            <p className="font-bold text-white">
-                              {selectedTask.volunteerId?.name || "N/A"}
-                            </p>
+                            <p className="font-bold text-white">{selectedTask.volunteerId?.name || "N/A"}</p>
                           </div>
-
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Location</p>
-                            <p className="text-white">
-                              {selectedTask.reportId?.location || "N/A"}
-                            </p>
+                            <p className="text-white">{selectedTask.reportId?.location || "N/A"}</p>
                           </div>
-
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Phone</p>
-                            <p className="text-white">
-                              {selectedTask.volunteerId?.phone || "N/A"}
-                            </p>
+                            <p className="text-white">{selectedTask.volunteerId?.phone || "N/A"}</p>
                           </div>
-
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Severity</p>
-                            <p className="text-orange-500 font-bold">
-                              {selectedTask.reportId?.severityScore || 0}/10
-                            </p>
+                            <p className="text-orange-500 font-bold">{selectedTask.reportId?.severityScore || 0}/10</p>
                           </div>
-
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Status</p>
-                            <p className="text-green-400 font-bold">
-                              {selectedTask.status}
-                            </p>
+                            <p className="text-green-400 font-bold">{selectedTask.status}</p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Functional proof image component bound to selectedTask */}
                       {selectedTask.proofImageUrl && (
                         <div className="border border-[#1C223C] rounded-3xl overflow-hidden bg-[#11162B]">
-                          <div className="p-3 border-b border-[#1C223C] text-xs font-bold text-gray-500 uppercase">
-                            Uploaded Proof
-                          </div>
-                          <img
-                            src={selectedTask.proofImageUrl}
-                            alt="Proof"
-                            className="w-full h-auto max-h-96 object-contain"
-                          />
+                          <div className="p-3 border-b border-[#1C223C] text-xs font-bold text-gray-500 uppercase">Uploaded Proof</div>
+                          <img src={selectedTask.proofImageUrl} alt="Proof" className="w-full h-auto max-h-96 object-contain" />
                         </div>
                       )}
 
                       <div className="flex gap-4">
-                        <button 
-                          onClick={() => handleVerificationUpdate(selectedTask._id)} 
-                          className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all"
-                        >
-                          Verify & Close Mission
-                        </button>
-                        <button 
-                          onClick={() => handleRejectTask(selectedTask._id)} 
-                          className="flex-1 border-2 border-red-900/50 hover:border-red-500 text-red-500 font-bold py-3 rounded-xl transition-all"
-                        >
-                          Reject Proof
-                        </button>
+                        <button onClick={() => handleVerificationUpdate(selectedTask._id)} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all">Verify & Close Mission</button>
+                        <button onClick={() => handleRejectTask(selectedTask._id)} className="flex-1 border-2 border-red-900/50 hover:border-red-500 text-red-500 font-bold py-3 rounded-xl transition-all">Reject Proof</button>
                       </div>
                     </>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-gray-600 italic">
-                      Select a completed task
-                    </div>
+                    <div className="h-full flex items-center justify-center text-gray-600 italic">Select a completed task</div>
                   )}
                 </div>
               </div>
             </div>
+          ) : activeTab === "settings" ? (
+            <AdminSettings />
           ) : null}
         </div>
       </main>
@@ -551,7 +514,6 @@ export default function AdminDashboard() {
   );
 }
 
-// --- REUSABLE SUB-COMPONENTS ---
 function NavItem({ icon, label, active, onClick }) {
   return (
     <div onClick={onClick} className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all active:scale-95 ${active ? 'bg-[#F97316]/10 text-[#F97316] border border-[#F97316]/20' : 'text-gray-500 hover:bg-[#11162B] hover:text-white'}`}>

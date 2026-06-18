@@ -50,10 +50,17 @@ const ReportSchema = new mongoose.Schema({
     type: String
   },
 
-  status: {
+    status: {
     type: String,
-    default: 'Pending'
-  },
+    enum: [
+      "Pending",
+      "Assigned",
+      "Completed",
+      "Verified",
+      "Rejected"
+    ],
+    default: "Pending"
+   }, 
 
   assignedVolunteer: {
     type: mongoose.Schema.Types.ObjectId,

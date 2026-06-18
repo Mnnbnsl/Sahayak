@@ -25,6 +25,10 @@ const VolunteerSchema = new mongoose.Schema({
 
   location: String,
 
+  latitude: Number,
+
+  longitude: Number,
+
   availability: {
     type: Boolean,
     default: true
