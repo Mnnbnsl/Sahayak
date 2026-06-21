@@ -54,7 +54,9 @@ const ReportSchema = new mongoose.Schema({
     type: String,
     enum: [
       "Pending",
+      "Approved",
       "Assigned",
+      "In_Progress",
       "Completed",
       "Verified",
       "Rejected"

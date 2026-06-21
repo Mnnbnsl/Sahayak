@@ -631,9 +631,28 @@ app.post("/api/tasks/:id/complete", upload.single("proofImage"), async (req, res
 
 app.post("/api/tasks/:id/verify", async (req, res) => {
     const task = await Task.findById(req.params.id);
+
+    if (!task) {
+        return res.status(404).json({
+            message: "Task not found"
+        });
+    }
+
     task.status = "VERIFIED";
     task.verified = true;
     await task.save();
+
+    const report = await Report.findById(task.reportId);
+
+    if (report) {
+        report.status = "Verified";
+        console.log("REPORT STATUS SAVED:", report.status);
+        await report.save();
+        console.log("REPORT SAVED SUCCESSFULLY");
+
+        io.emit("report-updated", report);
+    }
+
     res.json(task);
 });
 

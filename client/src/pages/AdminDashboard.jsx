@@ -24,15 +24,18 @@ const createColoredMarker = (status) => {
       color = "#EF4444"; // Red 🔴
       break;
     case "assigned":
+    case "approved":
       color = "#3B82F6"; // Blue 🔵
       break;
     case "completed":
       color = "#F59E0B"; // Yellow 🟡
       break;
     case "verified":
-    case "approved":
     case "resolved":
-      color = "#10B981"; // Green 🟢
+      color = "#00FF00"; // Green 🟢
+      break;
+    case "rejected":
+      color = "#6B7280";     // gray 
       break;
     default:
       color = "#EF4444";
@@ -51,7 +54,11 @@ const createColoredMarker = (status) => {
       </style>
     </svg>
   `;
-
+  console.log(
+    "MARKER COLOR:",
+    status,
+    color
+  );
   return L.divIcon({
     html: svgTemplate,
     className: "custom-leaflet-marker",
@@ -293,10 +300,6 @@ export default function AdminDashboard() {
           </div>
           
           <div className="flex items-center gap-6">
-            <button onClick={() => navigate("/report")} className="bg-[#F97316] hover:bg-[#EA580C] text-white px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 transition-all">
-              <Plus size={18}/> Submit Request
-            </button>
-
             {!user ? (
               <button onClick={() => { setShowAuth(true); setIsLogin(true); }} className="text-sm font-bold text-gray-400 hover:text-white">Login / Sign Up</button>
             ) : (
@@ -333,12 +336,44 @@ export default function AdminDashboard() {
               
               {/* INTERACTIVE COMPONENT MAP TILES */}
               <div className="h-[500px] overflow-hidden rounded-3xl border border-[#1C223C] relative z-10">
-                <MapContainer center={[23.2156, 72.6369]} zoom={5} style={{ height: "100%", width: "100%" }}>
+                <MapContainer center={[31.634, 74.8723]} zoom={12} style={{ height: "100%", width: "100%" }}>
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   {/* Filter completely removed so Pending pins (like Gandhinagar) are immediately visible! */}
                   {Array.isArray(reports) && reports.filter(r => r).map(report => {
-                    const lat = Number(report.latitude) || 23.2156;
-                    const lng = Number(report.longitude) || 72.6369;
+                    if (!report.latitude || !report.longitude) {
+                      return null;
+                    }
+
+                    const lat = Number(report.latitude);
+                    const lng = Number(report.longitude);
+                    console.log(
+                      "REPORT:",
+                      report.category,
+                      "STATUS:",
+                      report.status,
+                      "LAT:",
+                      report.latitude,
+                      "LNG:",
+                      report.longitude
+                    );
+                     console.log(
+                      "RAW:",
+                      report.status,
+                      "LOWER:",
+                      report.status?.toLowerCase()
+                    );
+                    console.log(
+                      "MAP REPORT:",
+                      report.category,
+                      report.status
+                    );
+                    console.log(
+                      "RENDERING MARKER:",
+                      report.category,
+                      report.status,
+                      lat,
+                      lng
+                    );
                     return (
                       <Marker 
                         key={report._id} 
@@ -376,6 +411,7 @@ export default function AdminDashboard() {
                   <div className="flex-1 overflow-y-auto">
                     {reports.length > 0 ? reports.map(r => (
                       <div key={r._id} onClick={() => setSelectedReport(r)} 
+                      
                         className={`p-5 border-b border-[#1C223C] cursor-pointer transition-all hover:bg-[#11162B] ${selectedReport?._id === r._id ? 'bg-[#11162B] border-l-4 border-orange-500' : ''}`}>
                         <div className="flex justify-between items-start mb-2">
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded
