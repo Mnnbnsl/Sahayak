@@ -148,4 +148,17 @@ router.patch(
   }
 );
 
+// GET ALL VOLUNTEERS
+router.get("/", async (req, res) => {
+  try {
+    const volunteers = await Volunteer.find();
+
+    res.json(volunteers);
+  } catch (err) {
+    res.status(500).json({
+      message: err.message
+    });
+  }
+});
+
 export default router;

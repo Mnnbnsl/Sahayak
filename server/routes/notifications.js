@@ -4,6 +4,29 @@ import Notification from "../models/Notification.js";
 const router = express.Router();
 
 router.get(
+  "/admin/all",
+  async (req, res) => {
+    try {
+
+      const notifications =
+        await Notification.find({
+          audience: "admin"
+        })
+        .sort({ createdAt: -1 });
+
+      res.json(notifications);
+
+    } catch (err) {
+
+      res.status(500).json({
+        message: err.message
+      });
+
+    }
+  }
+);
+
+router.get(
   "/:volunteerId",
   async (req, res) => {
     try {

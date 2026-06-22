@@ -65,6 +65,8 @@ const uploadToCloudinary = (fileBuffer, folderName) => {
     });
 };
 
+
+
 // AI Analysis Function
 async function analyzeWithLLM(data) {
     if (!process.env.GEMINI_API_KEY) {
@@ -137,6 +139,45 @@ You are an expert Emergency Response Dispatcher and Incident Analyst. Your goal 
     }
 }
 
+// helper function to convert
+async function geocodeLocation(location) {
+    try {
+        console.log(
+        "GEOCODE URL:",
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=jsonv2&limit=1`
+        );
+        console.log("LOCATION RECEIVED:", location);
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=jsonv2&limit=1`,
+            {
+                headers: {
+                    "User-Agent": "Sahayak Emergency Platform"
+                }
+            }
+        );
+
+        const text = await response.text();
+
+        console.log("RAW RESPONSE:", text);
+
+        const data = JSON.parse(text);
+
+        if (data.length > 0) {
+            return {
+                latitude: parseFloat(data[0].lat),
+                longitude: parseFloat(data[0].lon)
+            };
+        }
+
+        return null;
+
+    } catch (err) {
+
+        console.log("GEOCODING ERROR:", err);
+
+        return null;
+    }
+}
 function decideStatus(ai) {
     if (!ai.is_incident) return "Rejected";
     if (ai.confidence < 0.9) return "Pending";
@@ -176,7 +217,7 @@ async function suggestVolunteer(report) {
 
     return best;
 }
-async function assignTask(report) {
+ async function assignTask(report) {
     console.log("ENTERED ASSIGN TASK");
     console.log("REPORT CATEGORY:", report.category);
 
@@ -184,7 +225,20 @@ async function assignTask(report) {
 
     console.log("MATCHED VOLUNTEER:", volunteer);
 
-    if (!volunteer) throw new Error("No volunteers available");
+    // No volunteer online
+    if (!volunteer) {
+        throw new Error("No volunteers available");
+    }
+
+    // Prevent duplicate assignment
+    const existingTask = await Task.findOne({
+        reportId: report._id
+    });
+
+    if (existingTask) {
+        console.log("TASK ALREADY EXISTS");
+        return existingTask;
+    }
 
     const task = await Task.create({
         reportId: report._id,
@@ -318,8 +372,34 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
 
         const ai = await analyzeWithLLM(data);
 
-        const latitude = parseFloat(data.latitude);
-        const longitude = parseFloat(data.longitude);
+        let latitude = parseFloat(data.latitude);
+        let longitude = parseFloat(data.longitude);
+
+        if (
+            isNaN(latitude) ||
+            isNaN(longitude)
+        ) {
+
+            console.log(
+                "NO GPS FOUND, GEOCODING:",
+                data.location
+            );
+
+            const coords =
+                await geocodeLocation(
+                    data.location
+                );
+
+            if (coords) {
+                latitude = coords.latitude;
+                longitude = coords.longitude;
+            }
+             console.log(
+                "GEOCODE SUCCESS:",
+                latitude,
+                longitude
+            );
+        }
 
         const newReport = await Report.create({
             name: data.name || "Anonymous User",
@@ -327,8 +407,8 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
             description: data.description,
             location: data.location,
 
-            latitude: isNaN(latitude) ? 31.6340 : latitude,
-            longitude: isNaN(longitude) ? 74.8723 : longitude,
+            latitude: isNaN(latitude) ? null : latitude,
+            longitude: isNaN(longitude) ? null : longitude,
 
             category: data.category,
             imageUrl: secureAssetUrl,
@@ -338,7 +418,16 @@ app.post('/api/reports', upload.single("image"), async (req, res) => {
             status : "Pending"
         });
 
-        
+        await Notification.create({
+            audience: "admin",
+
+            title: "Emergency Alert",
+
+            message:
+                `${newReport.category} incident reported near ${newReport.location}. Immediate attention may be required.`,
+
+            type: "REPORT"
+        });
 
         io.emit('new-report', newReport);
         res.status(201).json(newReport);
@@ -399,9 +488,37 @@ app.post("/api/tasks/:id/reject", async (req, res) => {
       });
     }
 
+    if (task.status !== "COMPLETED") {
+        return res.status(400).json({
+            message: "Only completed tasks can be rejected"
+        });
+    }
+
     task.status = "Assigned";
+    task.proofImageUrl = null;
 
     await task.save();
+
+    const volunteer =
+        await Volunteer.findById(
+            task.volunteerId
+        );
+
+    if (volunteer) {
+
+        await Notification.create({
+            volunteerId: volunteer._id,
+            audience: "volunteer",
+
+            title: "Additional Verification Needed",
+
+            message:
+            "The submitted proof could not be verified. Please revisit the incident if necessary and upload clearer evidence of task completion.",
+
+            type: "REJECTED"
+        });
+
+    }
 
     res.json({
       success: true
@@ -620,6 +737,18 @@ app.post("/api/tasks/:id/complete", upload.single("proofImage"), async (req, res
             aiConfidence: report.confidence || 1.0,
             status: "Pending"
         });
+
+        await Notification.create({
+            audience: "admin",
+
+            title: "Verification Required",
+
+           message:
+            `${volunteer.name} has submitted completion proof for a ${report.category} incident. Review required.`,
+            
+            type: "VERIFICATION"
+        });
+        
         console.log("VERIFICATION CREATED:", verification);
 
         res.json(task);
@@ -646,12 +775,39 @@ app.post("/api/tasks/:id/verify", async (req, res) => {
 
     if (report) {
         report.status = "Verified";
-        console.log("REPORT STATUS SAVED:", report.status);
         await report.save();
-        console.log("REPORT SAVED SUCCESSFULLY");
 
         io.emit("report-updated", report);
     }
+
+    // ADD THIS PART
+    const volunteer = await Volunteer.findById(
+        task.volunteerId
+    );
+
+    if (volunteer) {
+        volunteer.availability = true;
+        volunteer.tasksCompleted += 1;
+        await volunteer.save();
+
+        console.log(
+            "VOLUNTEER AVAILABLE AGAIN:",
+            volunteer.name
+        );
+    }
+
+    await Notification.create({
+        volunteerId: volunteer._id,
+        audience: "volunteer",
+
+        title: "Mission Accomplished",
+
+
+        message:
+        "Your response has been verified by the coordinator. The incident has been successfully resolved. Thank you for your service.",
+
+        type: "VERIFIED"
+    });
 
     res.json(task);
 });

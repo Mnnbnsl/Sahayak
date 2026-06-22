@@ -135,8 +135,8 @@ export default function ReportPage() {
     data.append("category", formData.category === "Other" ? customCategory : formData.category);
     
     // Send fallback coordinates if user hasn't explicitly clicked "Use Current Location"
-    data.append("latitude", formData.latitude || 31.6340);
-    data.append("longitude", formData.longitude || 74.8723);
+    data.append("latitude", formData.latitude || "");
+    data.append("longitude", formData.longitude || "");
 
     if (selectedImage) {
       data.append("image", selectedImage);

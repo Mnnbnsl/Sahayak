@@ -157,7 +157,7 @@ export default function LandingPage() {
           buttons={[{ 
               text: "Admin Dashboard", 
               variant: "secondary", 
-              onClick: () => navigate("/admin") 
+              onClick: () => navigate("/admin-login") 
           }]}
         />
       </div>

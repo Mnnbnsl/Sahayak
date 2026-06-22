@@ -4,9 +4,14 @@ const NotificationSchema = new mongoose.Schema(
   {
     volunteerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Volunteer"
+      ref: "Volunteer",
+      default: null
     },
-
+    audience: {
+      type: String,
+      enum: ["admin", "volunteer"],
+      default: "volunteer"
+    },
     title: String,
 
     message: String,

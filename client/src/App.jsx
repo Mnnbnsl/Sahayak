@@ -8,6 +8,8 @@ import AdminDashboard from "./pages/AdminDashboard";
 import VolunteerDashboard from "./pages/VolunteerDashboard";
 import VolunteerRegister from "./pages/VolunteerRegister";
 import VolunteerLogin from "./pages/VolunteerLogin";
+import AdminLogin from "./pages/AdminLogin";
+import AdminProtectedRoute from "./pages/AdminProtectedRoute";
 
 // Optional: Global Components (like a Navbar if you have one)
 // import Navbar from "./components/Navbar";
@@ -26,7 +28,7 @@ function App() {
           <Route path="/report" element={<ReportPage />} />
 
           {/* Admin / Coordinator Dashboard */}
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin" element={ <AdminProtectedRoute> <AdminDashboard /> </AdminProtectedRoute> } />
 
           {/* Volunteer Dashboard */}
           <Route path="/volunteer" element={<VolunteerDashboard />} />
@@ -34,7 +36,8 @@ function App() {
           <Route path="/volunteer/register" element={<VolunteerRegister />} />
           {/* Volunteer Login */}
           <Route path="/volunteer/login" element={<VolunteerLogin />} />
-          
+          {/* Admin Login */}
+          <Route path="/admin-login" element={<AdminLogin />} />
           {/* Fallback for 404 - Optional */}
           <Route 
             path="*" 
