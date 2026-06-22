@@ -148,6 +148,32 @@ router.patch(
   }
 );
 
+router.patch("/location/:id", async (req, res) => {
+  try {
+
+    const { latitude, longitude } = req.body;
+
+    const volunteer =
+      await Volunteer.findByIdAndUpdate(
+        req.params.id,
+        {
+          latitude,
+          longitude
+        },
+        { new: true }
+      );
+
+    res.json(volunteer);
+
+  } catch (err) {
+
+    res.status(500).json({
+      message: err.message
+    });
+
+  }
+});
+
 // GET ALL VOLUNTEERS
 router.get("/", async (req, res) => {
   try {

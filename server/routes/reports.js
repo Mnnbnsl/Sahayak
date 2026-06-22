@@ -5,6 +5,35 @@ import Volunteer from "../models/Volunteer.js";
 
 const router = express.Router();
 
+
+function getDistance(lat1, lon1, lat2, lon2) {
+
+  const R = 6371;
+
+  const dLat =
+    (lat2 - lat1) * Math.PI / 180;
+
+  const dLon =
+    (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat / 2) *
+    Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+
+  const c =
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    );
+
+  return R * c;
+}
+
 /**
  * @route   GET /api/reports
  * @desc    Fetch all incident reports for the Admin Dashboard feed
@@ -69,6 +98,9 @@ router.post("/", async (req, res) => {
  * @route   PATCH /api/reports/:id
  * @desc    Update status of a report (Review Queue -> Approve / Reject)
  */
+console.log(
+  "NEW DISTANCE ASSIGNMENT ROUTE HIT"
+);
 router.patch("/:id", async (req, res) => {
   try {
     const { status, forceApproval } = req.body;
@@ -110,14 +142,69 @@ router.patch("/:id", async (req, res) => {
         });
       }
 
-      const volunteer = activeVolunteers[0];
+      let volunteer = null;
+      let minDistance = Infinity;
+
+      for (const v of activeVolunteers) {
+
+        if (
+          v.latitude == null ||
+          v.longitude == null
+        ) {
+          continue;
+        }
+
+        if (
+          report.latitude == null ||
+          report.longitude == null
+        ) {
+          return res.status(400).json({
+            message: "Report location coordinates missing"
+          });
+        }
+
+        console.log(
+          "Volunteer:",
+          v.name,
+          "Lat:",
+          v.latitude,
+          "Lng:",
+          v.longitude
+        );
+
+
+        const distance = getDistance(
+          report.latitude,
+          report.longitude,
+          v.latitude,
+          v.longitude
+        );
+
+        console.log(
+          "Distance:",
+          distance
+        );
+
+        if (distance < minDistance) {
+
+          minDistance = distance;
+          volunteer = v;
+
+        }
+      }
+
+      if (!volunteer) {
+        return res.status(400).json({
+          message: "No volunteer location available"
+        });
+      }
 
       report.status = "Approved";
       report.assignedVolunteer = volunteer._id;
 
       await report.save();
 
-      await Task.create({
+      const task = await Task.create({
         reportId: report._id,
         volunteerId: volunteer._id,
         status: "Assigned"

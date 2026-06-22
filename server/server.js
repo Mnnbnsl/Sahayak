@@ -184,38 +184,74 @@ function decideStatus(ai) {
     return "Approved";
 }
 // Volunteer Suggestion Logic
+function getDistance(lat1, lon1, lat2, lon2) {
+
+    const R = 6371;
+
+    const dLat =
+        (lat2 - lat1) * Math.PI / 180;
+
+    const dLon =
+        (lon2 - lon1) * Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+
+    const c =
+        2 *
+        Math.atan2(
+            Math.sqrt(a),
+            Math.sqrt(1 - a)
+        );
+
+    return R * c;
+}
+
 async function suggestVolunteer(report) {
 
-    console.log("REPORT CATEGORY:", report.category);
+    const volunteers =
+        await Volunteer.find({
+            availability: true
+        });
 
-    const allVolunteers = await Volunteer.find({});
-    console.log("ALL VOLUNTEERS:", allVolunteers);
+    let nearestVolunteer = null;
+    let minDistance = Infinity;
 
-    const volunteers = await Volunteer.find({
-        availability: true
-    });
+    for (const v of volunteers) {
 
-    console.log("MATCHING VOLUNTEERS:", volunteers);
+        if (
+            v.latitude == null ||
+            v.longitude == null
+        ) {
+            continue;
+        }
 
-    let best = null;
-    let bestScore = -1;
+        const distance = getDistance(
+            report.latitude,
+            report.longitude,
+            v.latitude,
+            v.longitude
+        );
 
-    for (let v of volunteers) {
-        let score = 0;
-        score += 5;
-        score += (v.tasksCompleted || 0) * 0.2;
-        score += (v.rating || 0) * 2;
+        console.log(
+            `${v.name}: ${distance.toFixed(2)} km`
+        );
 
-        if (v.location === report.location)
-            score += 3;
-
-        if (score > bestScore) {
-            best = v;
-            bestScore = score;
+        if (distance < minDistance) {
+            minDistance = distance;
+            nearestVolunteer = v;
         }
     }
 
-    return best;
+    console.log(
+        "SELECTED:",
+        nearestVolunteer?.name
+    );
+
+    return nearestVolunteer;
 }
  async function assignTask(report) {
     console.log("ENTERED ASSIGN TASK");

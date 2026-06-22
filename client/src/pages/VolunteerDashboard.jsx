@@ -89,6 +89,44 @@ export default function VolunteerDashboard() {
   }, []);
 
   useEffect(() => {
+
+    if (!volunteerId) return;
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+
+        try {
+
+          await fetch(
+            `${API_URL}/api/volunteers/location/${volunteerId}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              })
+            }
+          );
+           console.log(
+            "Location updated:",
+            position.coords.latitude,
+            position.coords.longitude
+          );
+
+        } catch (err) {
+          console.log(err);
+        }
+
+      },
+      (err) => console.log(err)
+    );
+
+  }, []);
+
+  useEffect(() => {
     const assigned = tasks.filter(
       t => t.status?.toLowerCase() === "assigned"
     ).length;
