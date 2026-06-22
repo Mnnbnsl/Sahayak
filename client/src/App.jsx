@@ -10,6 +10,7 @@ import VolunteerRegister from "./pages/VolunteerRegister";
 import VolunteerLogin from "./pages/VolunteerLogin";
 import AdminLogin from "./pages/AdminLogin";
 import AdminProtectedRoute from "./pages/AdminProtectedRoute";
+import Chatbot from "./pages/Chatbot";
 
 // Optional: Global Components (like a Navbar if you have one)
 // import Navbar from "./components/Navbar";
@@ -48,6 +49,7 @@ function App() {
             } 
           />
         </Routes>
+        <Chatbot />
       </div>
     </Router>
   );

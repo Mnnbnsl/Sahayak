@@ -18,6 +18,7 @@ import jwt from 'jsonwebtoken';
 import taskRoutes from "./routes/tasks.js";
 import volunteerRoutes from "./routes/volunteers.js";
 import notificationRoutes from "./routes/notifications.js";
+import chatRoutes from "./routes/chat.js";
 
 const app = express();
 connectDB(); // Connect to MongoDB Atlas cluster
@@ -39,6 +40,7 @@ app.use(express.json());
 app.use("/api/tasks", taskRoutes);
 app.use("/api/volunteers", volunteerRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/chat", chatRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, {
