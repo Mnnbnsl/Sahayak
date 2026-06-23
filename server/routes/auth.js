@@ -22,7 +22,8 @@ router.post("/register", async (req, res) => {
         await User.create({
             fullName,
             email,
-            password: hashedPassword
+            password: hashedPassword, 
+            role: req.body.role || "coordinator"
         });
 
         res.status(201).json({
@@ -68,7 +69,8 @@ router.post("/login", async (req, res) => {
             user: {
                 id: user._id,
                 fullName: user.fullName,
-                email: user.email
+                email: user.email, 
+                role: user.role
             }
         });
     } catch (error) {

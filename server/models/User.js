@@ -15,6 +15,7 @@ const userSchema = new mongoose.Schema({
 
   password: {
     type: String,
+    enum: ["superadmin", "coordinator"],
     required: true
   },
 

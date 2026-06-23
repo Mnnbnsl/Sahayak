@@ -10,7 +10,8 @@ import {
 export default function AdminSettings() {
   const [profile, setProfile] = useState({
     fullName: "",
-    email: ""
+    email: "", 
+    role: ""
   });
   
   const [notifications, setNotifications] = useState({
@@ -39,7 +40,8 @@ export default function AdminSettings() {
 
         setProfile({
         fullName: user?.fullName || "",
-        email: user?.email || ""
+        email: user?.email || "", 
+        role: user?.role || ""
         });
 
         if (user?.notificationSettings) {
@@ -63,6 +65,13 @@ export default function AdminSettings() {
 
     const [confirmPassword, setConfirmPassword] =
     useState("");
+
+    const [newCoordinator, setNewCoordinator] =
+    useState({
+      fullName: "",
+      email: "",
+      password: ""
+    });
 
   const handleSave = async () => {
 
@@ -171,6 +180,53 @@ export default function AdminSettings() {
 
     };
 
+  const createCoordinator = async () => {
+
+      try {
+
+        const response = await fetch(
+          "https://sahayak-backend-tk6h.onrender.com/api/auth/register",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              ...newCoordinator,
+              role: "coordinator"
+            })
+          }
+        );
+
+        const data = await response.json();
+
+        if (response.ok) {
+
+          alert("Coordinator Created");
+
+          setNewCoordinator({
+            fullName: "",
+            email: "",
+            password: ""
+          });
+
+        } else {
+
+          alert(data.message);
+
+        }
+
+      } catch (err) {
+
+        console.log(err);
+
+        alert("Creation Failed");
+
+      }
+
+    };  
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
 
@@ -288,6 +344,71 @@ export default function AdminSettings() {
         </div>
 
       </div>
+
+      
+
+     {profile.role === "superadmin" && (
+
+        <div className="bg-[#0A0F24] border border-[#1C223C] rounded-3xl p-6">
+
+          <h3 className="text-xl font-bold mb-6">
+            Coordinator Management
+          </h3>
+
+          <div className="space-y-4">
+
+            <input
+              type="text"
+              placeholder="Coordinator Name"
+              value={newCoordinator.fullName}
+              onChange={(e) =>
+                setNewCoordinator({
+                  ...newCoordinator,
+                  fullName: e.target.value
+                })
+              }
+              className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl p-3 text-white"
+            />
+
+            <input
+              type="email"
+              placeholder="Coordinator Email"
+              value={newCoordinator.email}
+              onChange={(e) =>
+                setNewCoordinator({
+                  ...newCoordinator,
+                  email: e.target.value
+                })
+              }
+              className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl p-3 text-white"
+            />
+
+            <input
+              type="password"
+              placeholder="Temporary Password"
+              value={newCoordinator.password}
+              onChange={(e) =>
+                setNewCoordinator({
+                  ...newCoordinator,
+                  password: e.target.value
+                })
+              }
+              className="w-full bg-[#11162B] border border-[#1C223C] rounded-xl p-3 text-white"
+            />
+
+            <button
+              onClick={createCoordinator}
+              className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-xl font-bold"
+            >
+              Create Coordinator
+            </button>
+
+          </div>
+
+        </div>
+
+        )}       
+      
 
       {/* SAVE */}
 
