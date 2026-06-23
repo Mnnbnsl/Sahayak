@@ -25,10 +25,12 @@ const app = express();
 
 // Sync server cross-origin configurations directly with frontend port mapping targets
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:3000", "https://sahayaksite.vercel.app"],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    origin: true,
+    credentials: true
 }));
+
+app.options("*", cors());
+
 app.use(express.json());
 app.use("/api/tasks", taskRoutes);
 app.use("/api/volunteers", volunteerRoutes);
@@ -52,7 +54,15 @@ cloudinary.v2.config({
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "http://localhost:5173", methods: ["GET", "POST", "PATCH"] }
+    cors: {
+        origin: [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "https://sahayaksite.vercel.app"
+        ],
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    }
 });
 
 // Share socket instance across express routing parameters safely
