@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.post("/register", async (req, res) => {
     try {
+        console.log("REGISTER BODY:", req.body);
         const { fullName, email, password } = req.body;
 
         const existingUser = await User.findOne({ email });
@@ -31,6 +32,7 @@ router.post("/register", async (req, res) => {
         });
 
     } catch (error) {
+        console.error("REGISTER ERROR:");
         console.error(error);
         res.status(500).json({
             message: error.message
