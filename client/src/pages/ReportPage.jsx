@@ -143,7 +143,7 @@ export default function ReportPage() {
     }
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const API_URL = import.meta.env.VITE_API_URL || "https://sahayak-backend-tk6h.onrender.com";
       const response = await fetch(`${API_URL}/api/reports`, {
         method: "POST",
         body: data

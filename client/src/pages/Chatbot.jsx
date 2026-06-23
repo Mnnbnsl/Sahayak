@@ -69,7 +69,7 @@ export default function Chatbot() {
     localStorage.setItem("sahayakChat", JSON.stringify(messages));
   }, [messages]);
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = import.meta.env.VITE_API_URL || "https://sahayak-backend-tk6h.onrender.com";
 
   const sendMessage = async (customMessage = null) => {
     const msg = customMessage || message;

@@ -75,7 +75,7 @@ export default function AdminSettings() {
 
         const response =
         await fetch(
-            "http://localhost:5000/api/settings",
+            "https://sahayak-backend-tk6h.onrender.com/api/settings",
             {
             method: "PATCH",
 
@@ -136,7 +136,7 @@ export default function AdminSettings() {
 
         const response =
         await fetch(
-            "http://localhost:5000/api/auth/change-password",
+            "https://sahayak-backend-tk6h.onrender.com/api/auth/change-password",
             {
             method: "PATCH",
 

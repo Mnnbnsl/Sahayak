@@ -19,7 +19,7 @@ export default function VolunteerRegister() {
 
   const API_URL =
     import.meta.env.VITE_API_URL ||
-    "http://localhost:5000";
+    "https://sahayak-backend-tk6h.onrender.com";
 
   // GPS geolocation fetch handler
   const handleGetLocation = () => {
@@ -99,7 +99,7 @@ export default function VolunteerRegister() {
       new Date(a.createdAt)
     );
   });
-  
+
   return (
     <div className="min-h-screen bg-[#050816] flex justify-center items-center p-4">
       <form

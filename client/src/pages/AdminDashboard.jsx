@@ -13,7 +13,7 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "https://sahayak-backend-tk6h.onrender.com";
 
 // --- Dynamic Color-Coded Leaflet Marker Generator ---
 const createColoredMarker = (status) => {

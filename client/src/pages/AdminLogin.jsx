@@ -9,7 +9,7 @@ export default function AdminLogin() {
 
   const API_URL =
     import.meta.env.VITE_API_URL ||
-    "http://localhost:5000";
+    "https://sahayak-backend-tk6h.onrender.com";
 
   const handleLogin = async (e) => {
     e.preventDefault();
