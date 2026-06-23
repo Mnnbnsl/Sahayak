@@ -346,9 +346,11 @@ app.post('/api/auth/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        await User.create({ fullName, email, password: hashedPassword });
+        await User.create({ fullName, email, password: hashedPassword, role : req.body.role || "coordinator"});
         res.status(201).json({ message: "User created successfully" });
     } catch (err) {
+        console.error("REGISTER ERROR:");
+        console.error(err);
         res.status(500).json({ message: "Server error" });
     }
 });
