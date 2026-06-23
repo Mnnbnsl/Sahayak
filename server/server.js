@@ -856,4 +856,8 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => console.log('Socket link dropped safely'));
 });
 
-server.listen(5000, () => console.log("Sahayak Processing Engine cleanly deployed on port 5000"));
+const PORT = process.env.PORT || 5000;
+
+server.listen(PORT, () =>
+  console.log(`Sahayak Processing Engine running on port ${PORT}`)
+);
