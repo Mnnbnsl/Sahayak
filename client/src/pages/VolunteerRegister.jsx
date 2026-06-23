@@ -49,6 +49,9 @@ export default function VolunteerRegister() {
     );
   };
 
+  console.log("API URL =", API_URL);
+  console.log("POST URL =", `${API_URL}/api/volunteers/register`);
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
 
