@@ -15,12 +15,12 @@ const userSchema = new mongoose.Schema({
 
   password: {
     type: String,
-    enum: ["superadmin", "coordinator"],
     required: true
   },
 
   role: {
     type: String,
+    enum: ["superadmin", "coordinator"],
     default: "coordinator"
   },
 
