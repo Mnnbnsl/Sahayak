@@ -21,6 +21,20 @@ import notificationRoutes from "./routes/notifications.js";
 import chatRoutes from "./routes/chat.js";
 
 const app = express();
+
+
+// Sync server cross-origin configurations directly with frontend port mapping targets
+app.use(cors({
+    origin: ["http://localhost:5173", "http://localhost:3000", "https://sahayaksite.vercel.app"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+}));
+app.use(express.json());
+app.use("/api/tasks", taskRoutes);
+app.use("/api/volunteers", volunteerRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/chat", chatRoutes);
+
 app.get("/cors-test", (req, res) => {
   res.json({
     message: "cors working"
@@ -35,17 +49,6 @@ cloudinary.v2.config({
     api_secret: process.env.CLOUD_API_SECRET
 });
 
-// Sync server cross-origin configurations directly with frontend port mapping targets
-app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:3000", "https://sahayaksite.vercel.app"],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
-}));
-app.use(express.json());
-app.use("/api/tasks", taskRoutes);
-app.use("/api/volunteers", volunteerRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/chat", chatRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, {
