@@ -21,6 +21,11 @@ import notificationRoutes from "./routes/notifications.js";
 import chatRoutes from "./routes/chat.js";
 
 const app = express();
+app.get("/cors-test", (req, res) => {
+  res.json({
+    message: "cors working"
+  });
+});
 connectDB(); // Connect to MongoDB Atlas cluster
 
 // Cloudinary Engine SDK Initialization
@@ -32,7 +37,7 @@ cloudinary.v2.config({
 
 // Sync server cross-origin configurations directly with frontend port mapping targets
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin: ["http://localhost:5173", "http://localhost:3000", "https://sahayaksite.vercel.app"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
 }));
