@@ -51,13 +51,13 @@ export default function VolunteerRegister() {
 
   console.log("API URL =", API_URL);
   console.log("POST URL =", `${API_URL}/api/volunteers/register`);
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     try {
       const response = await fetch(
-        `${API_URL}/api/auth/volunteers/register`,
+        `${API_URL}/api/volunteers/register`,
         {
           method: "POST",
           headers: {
