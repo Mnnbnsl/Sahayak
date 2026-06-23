@@ -54,7 +54,7 @@ export default function VolunteerRegister() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/volunteers/register`,
+        `${API_URL}/api/auth/volunteers/register`,
         {
           method: "POST",
           headers: {
@@ -81,24 +81,7 @@ export default function VolunteerRegister() {
       alert("Server Error");
     }
   };
-  const statusOrder = {
-    Assigned: 1,
-    Completed: 2,
-    Verified: 3
-  };
 
-  const sortedTasks = [...tasks].sort((a, b) => {
-    const statusDiff =
-      statusOrder[a.status] -
-      statusOrder[b.status];
-
-    if (statusDiff !== 0) return statusDiff;
-
-    return (
-      new Date(b.createdAt) -
-      new Date(a.createdAt)
-    );
-  });
 
   return (
     <div className="min-h-screen bg-[#050816] flex justify-center items-center p-4">
